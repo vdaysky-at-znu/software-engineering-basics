@@ -14,11 +14,12 @@ Minestrike servers. It is written in Python and uses the Django framework as wel
 
 ## Changelog
 
-### TBD
+- 15-09-22 - Initial commit
+- 21-09-22 - Implemented player invitation, added reactive data views
 
 ## TODO 
   - [ ] Add a way for player to create own team
-  - [ ] Add a way for a team owner to invite a player to a team
+  - [x] Add a way for a team owner to invite a player to a team
   - [ ] Add a way for a team owner to kick a player from a team
   - [ ] Add a way for a team owner to promote a player to team owner
   - [ ] Add a way for a team owner to demote a player from team owner
