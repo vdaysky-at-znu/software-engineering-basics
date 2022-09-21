@@ -67,7 +67,6 @@ class UnavailableError(APIError):
 
 
 def user_exception_handler(request, exc: APIError):
-
     return response(
         http_status=exc.status_code,
         error=exc.message,

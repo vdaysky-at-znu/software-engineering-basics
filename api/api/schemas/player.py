@@ -68,3 +68,7 @@ PlayerData.update_forward_refs()
 
 class VerifyPlayer(BaseModel):
     verification_code: int = Field(ge=100_000, le=999_999)
+
+
+class SendInviteData(BaseModel):
+    player_id: int

@@ -15,7 +15,7 @@ export class ModelManager {
     }
     
     makeObejctReactive(name, object, id) {
-        console.log("make model reactive: ", object);
+        console.log("make object reactive: ", object);
         /** Make object reactive by adding it to vuex */
         let models_of_type = this.models[name] || {};
         models_of_type[id] = object;
@@ -39,96 +39,87 @@ export class ModelManager {
     }
 }
 
+// function serializeGraphqlParams(params) {
+//     let result = "";
+//     for (let key of Object.keys(params)) {
+//         result += key + " ";
+//     }
+//     return result;
+// }
+
+const fieldNameMap = (field) => {
+    let mapping = {
+        members: "member_ids",
+        permissions: "permission_ids",
+        players: "player_ids",
+        
+    }
+
+    if (mapping[field]) {
+        return mapping[field];
+    }
+    return field;
+}
 
 export default function Model(id) {
 
-
-    let existingModel = window.$models.get(this.constructor, id);
-
-    if (existingModel) {
-        return existingModel;
+    if (!id) {
+        throw new Error("Model id is required");
     }
 
-    if (!window.$models) {
-        throw new Error("Model objects can't be constructed inside store module");
+    const isView = typeof id === "object";
+    
+    // views are unique and independant.
+    if (!isView) {
+        let existingModel = window.$models.get(this.constructor, id);
+
+        if (existingModel) {
+            return existingModel;
+        }
+    
+        if (!window.$models) {
+            throw new Error("Model objects can't be constructed inside store module");
+        }
     }
 
-    this.id = id;
-
-    let reactive = window.$models.makeReactive(this, id);
-
-
-    const fieldNameMap = (field) => {
-        let mapping = {
-            members: "member_ids",
-            permissions: "permission_ids",
-        }
-
-        if (mapping[field]) {
-            return mapping[field];
-        }
-        return field;
+    if (isView) {
+        this.obejctId = id;
+    } else {
+        this.id = id;
     }
 
-    this.getGraphqlFields = function() {
-        
-
-        if (this.constructor.fields) {
-            return this.constructor.fields;
-        }
-
-        let fields = [];
-        
-        for (let fieldName of Object.keys(this.constructor)) {
+    if (isView) {
+        window.$socket.onEvent("ModelUpdateEvent", (data) => {
+            let modelName = data.payload.model_name;
+            let modelId = data.payload.model_pk;
             
-            
-            if (fieldName.startsWith("__")) {
-                continue;
-            }
+            for (let idPiece of Object.keys(this.constructor.__virtualId || {})) {
 
-            let field = this.constructor[fieldName];
+                if (idPiece != modelName + "_id") { 
+                    continue;
+                }
 
-            if (
-                field instanceof Function && 
-                !(field.prototype instanceof Model) &&
-                !(Array.isArray(field)) &&
-                !(field == String) && 
-                !(field == Number)
-            ) {
-                continue;
-            }
-
-
-            if (field.prototype instanceof Model) {
-                fields[fieldName] = {
-                    type: "model",
-                    class: field,
-                    graphqlField: fieldName + "_id",
+                if (this.obejctId[idPiece] == modelId) {
+                    this.load();
+                    return;
                 }
             }
-            else if (Array.isArray(field)) {
-                fields[fieldName] = {
-                    type: "array",
-                    class: field[0],
-                    isModel: field[0].prototype instanceof Model,
-                    graphqlField: fieldNameMap(fieldName),
-                }
-            }
-            else {
-                fields[fieldName] = {
-                    type: "primitive",
-                    graphqlField: fieldName,
-                }
-            }
-        }
-        this.constructor.fields = fields;
-        return fields;
+        });
+    }
+    
+    let reactive;
+
+    if (isView) {
+        // since views are unique, ids are generated randomly
+        reactive = window.$models.makeReactive(this, Math.random());
+    } else {
+        reactive = window.$models.makeReactive(this, id);
     }
 
     this.load = async () => {
 
 
-        let fieldData = this.getGraphqlFields();
+        let fieldData = this.constructor.getGraphqlFields(isView);
 
         // init empty arrays
         for (let fieldName of Object.keys(fieldData)) {
@@ -142,11 +133,11 @@ export default function Model(id) {
         
         let modelName = this.constructor.__modelname || this.constructor.name;
 
-        let data = await window.$api.graphql(modelName, this.id, fieldNames);
+        let data = await window.$api.graphql(modelName, this.obejctId || this.id, fieldNames);
 
         for (let fieldName of Object.keys(fieldData)) {
             let field = fieldData[fieldName];
-            let value = data[field.graphqlField];
+            let value = data[field.graphqlFieldName];
 
             if (field.type === "model") {
 
@@ -173,6 +164,75 @@ export default function Model(id) {
 
     return reactive;
     
+}
+
+Model.getGraphqlFields = function(isView) {
+        
+    if (this.fields) {
+        return this.fields;
+    }
+
+    let fields = [];
+    
+    for (let fieldName of Object.keys(this)) {
+        
+        
+        if (fieldName.startsWith("__")) {
+            continue;
+        }
+
+        let field = this[fieldName];
+
+        if (
+            field instanceof Function && 
+            !(field.prototype instanceof Model) &&
+            !(Array.isArray(field)) &&
+            !(field == String) && 
+            !(field == Number) &&
+            !(field == Boolean)
+        ) {
+            continue;
+        }
+
+
+        if (field.prototype instanceof Model) {
+            fields[fieldName] = {
+                type: "model",
+                class: field,
+                graphqlField: fieldName + "_id",
+                graphqlFieldName: fieldName + "_id",
+            }
+        }
+        else if (Array.isArray(field)) {
+            fields[fieldName] = {
+                type: "array",
+                class: field[0],
+                isModel: field[0].prototype instanceof Model,
+                // views have object ids
+                graphqlField: isView ? fieldNameMap(fieldName) + "{" + field[0].getObejctIdSchema() + "}" : fieldNameMap(fieldName),
+                graphqlFieldName: fieldNameMap(fieldName)
+            }
+        }
+        else {
+            fields[fieldName] = {
+                type: "primitive",
+                graphqlField: fieldName,
+                graphqlFieldName: fieldName
+            }
+        }
+    }
+    this.fields = fields;
+    return fields;
+}
+
+Model.getObejctIdSchema = function() {
+    let result = "";
+    console.log("get object id schema", this.__virtualId, Object.keys(this.__virtualId));
+    for (let fieldName of Object.keys(this.__virtualId)) {
+        result += fieldName + " ";
+    }
+    console.log(result);
+    return result;
 }
 
 Model.all = function () {
