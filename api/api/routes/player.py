@@ -1,20 +1,29 @@
 import asyncio
 import random
+import string
 from uuid import UUID
 
+from django.db.models import Q
 from fastapi import APIRouter
 
 from api.dependencies import PlayerDependency, PlayerAuthDependency, InviteDependency
 from api.exceptions import BadRequestError, PermissionError
 from api.models import Player, Invite, Role
 from api.adapters.mojang import get_last_name
+from api.schemas.player import SendInviteData
 
 router = APIRouter()
 
 
-# @router.get("/{player}", response_model=PlayerData)
-# def get_player(player: Player = PlayerDependency()):
-#     return player
+@router.get("/t-update/{player}")
+async def get_player(player: int):
+    player = Player.objects.get(id=player)
+    # generate random name from characters
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    player.username = name
+    player.save()
+    return player
+
 
 @router.get("/id/{uuid}")
 async def get_player_id(uuid: UUID):
@@ -49,26 +58,44 @@ async def get_player(uuid: UUID):
     return await get_last_name(uuid)
 
 
+@router.get("/find/{query}")
+def find_player(query: str):
+    player = Player.objects.filter(Q(username__iexact=query) | Q(uuid__iexact=query)).first()
+
+    player_id = player.id if player else None
+
+    return {
+        'player_id': player_id,
+    }
+
+
 @router.get('/fft')
 def get_fft():
     fft_players = Player.objects.filter(team=None)
-    return fft_players
+    return [player.id for player in fft_players]
 
 
-@router.post('/{player}/invite')
-def invite_player(player: Player = PlayerDependency(True), inviter: Player = PlayerAuthDependency):
+@router.post('/invite')
+def invite_player(data: SendInviteData, inviter: Player = PlayerAuthDependency):
 
     team = inviter.team
+    player = Player.objects.get(id=data.player_id)
 
+    is_owner = False
     if team is None:
-        raise BadRequestError('Not in team')
+        owned_team = inviter.get_owned_team()
+        if owned_team:
+            team = owned_team
+            is_owner = True
+        else:
+            raise BadRequestError("You are not in a team")
 
-    if not inviter.has_perm('api.team_owner') and not inviter.has_perm('api.team_leader'):
-        return PermissionError
+    if not is_owner and not inviter.has_perm('api.team_leader'):
+        raise PermissionError("You are not allowed to invite players")
 
-    invite = Invite.objects.get_or_create(player=player, team=team)
+    invite, created = Invite.objects.get_or_create(player=player, team=team)
     # todo broadcast to invited player
-    return invite
+    return invite.id
 
 #
 # @router.get('/invites')

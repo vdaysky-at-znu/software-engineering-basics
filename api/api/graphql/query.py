@@ -1,8 +1,52 @@
 import json
+from typing import List
 
 from ariadne import QueryType, make_executable_schema, ObjectType
 
-from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match
+from api.graphql.virtual import VirtualTableManager, VirtualTable
+from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite
+
+virtualTableManger = VirtualTableManager()
+
+
+@virtualTableManger.table(queryable=True)
+class FftPlayer(VirtualTable):
+    id: int
+    uuid: str
+    invited: bool
+    username: str
+
+    def __init__(self, player_id: int, team_id: int):
+        player = Player.objects.get(id=player_id)
+
+        self.id = player.id
+        self.uuid = player.uuid
+        self.username = player.username
+
+        team = Team.objects.get(id=team_id)
+        self.invited = Invite.objects.filter(player=player, team=team).exists()
+
+
+@virtualTableManger.table
+class FftPlayerId(VirtualTable):
+    player_id: int
+    team_id: int
+
+    def __init__(self, player_id: int, team_id: int):
+        self.player_id = player_id
+        self.team_id = team_id
+
+
+@virtualTableManger.table
+class FftPlayerView(VirtualTable):
+    player_ids: List[FftPlayerId]
+
+    def __init__(self, team_id: int):
+        self.player_ids = [
+            FftPlayerId(player_id=player.id, team_id=team_id)
+            for player in Player.objects.filter(team=None)
+        ]
+
 
 type_defs = """
     type Query {
@@ -20,6 +64,7 @@ type_defs = """
         game(id: Int): Game
         inGameTeam(id: Int): InGameTeam
         playerSession(id: Int): PlayerSession
+        """ + virtualTableManger.get_graphql_requests() + """
     }
     
     type Server {
@@ -27,6 +72,8 @@ type_defs = """
         games: [Game]
         id: Int
     }
+    
+    """ + virtualTableManger.get_graphql_responses() + """
     
     type Game {
         id: Int
@@ -121,6 +168,7 @@ type_defs = """
         role: Role
         team: Team
         team_id: Int 
+        owned_team_id: Int
     }
     
     type Role {
@@ -156,10 +204,19 @@ type_defs = """
 
 query = QueryType()
 
+virtualTableManger.define_resolvers(query)
+
 
 @query.field("player")
 def resolve_player(_, info, id):
-    return Player.objects.get(id=id)
+    player = Player.objects.get(id=id)
+    owned_team = Team.objects.filter(owner=player).first()
+    if owned_team:
+        player.owned_team_id = owned_team.id
+    else:
+        player.owned_team_id = None
+
+    return player
 
 
 @query.field("player_ids")
@@ -300,7 +357,6 @@ def resolve_ig_team_players(obj, *x):
 
 @in_game_team.field("player_ids")
 def resolve_ig_team_players(obj, *x):
-    print(f"get player ids: {obj.sessions.all()}")
     return [x.player.id for x in obj.sessions.all()]
 
 

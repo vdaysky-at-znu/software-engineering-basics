@@ -1,6 +1,6 @@
 <template>
 
-  <v-app ref="app">
+  <v-app ref="app" style="min-height: 100vh">
     <v-app-bar color="grey-lighten-2">
       <template v-slot:prepend>
           <v-app-bar-nav-icon v-show="!smAndUp" @click.stop="wide = !wide"></v-app-bar-nav-icon>
@@ -41,7 +41,48 @@
       <router-view></router-view>
     </v-main>
 
+
+    <v-footer>
+    
+      <div class="d-flex flex-row align-end" style="width: 100%; height: 100%">
+        <v-card
+          elevation="0"
+          rounded="0"
+          width="100%"
+          class="bg-grey text-center"
+        >
+          <v-card-text>
+            <v-btn
+              class="mx-4"
+              icon="mdi-home"
+              variant="plain"
+            ></v-btn>
+            <v-btn
+              class="mx-4"
+              icon="mdi-email"
+              variant="plain"
+            ></v-btn>
+            <v-btn
+              class="mx-4"
+              icon="mdi-calendar"
+              variant="plain"
+            ></v-btn>
+          </v-card-text>
+
+          <v-divider></v-divider>
+
+          <v-card-text>
+            {{ new Date().getFullYear() }} — <strong>Vuetify</strong>
+            <p>Thank you to <a href="https://crafatar.com">Crafatar</a> for providing avatars.</p>
+          </v-card-text>
+        </v-card>
+      </div>
+    
+  </v-footer>
+
   </v-app>
+
+  
 </template>
 
 <script>
@@ -61,6 +102,8 @@ export default {
   }),
 
   async created() {
+      this.$vuetify.theme.themes.light.colors.background = '#e0e0e0';
+
       let player = await API.getMe();
       this.$store.commit('setPlayer', player);
   },
@@ -71,3 +114,10 @@ export default {
   },
 }
 </script>
+
+
+<style scoped>
+.v-footer {
+  padding: 0%!important;
+}
+</style>

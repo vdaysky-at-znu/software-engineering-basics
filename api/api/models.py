@@ -71,6 +71,9 @@ class Player(AbstractUser):
     def is_verified(self):
         return self.verified_at is not None
 
+    def get_owned_team(self):
+        return self.teams.first()
+
     objects = UserManager()
 
     class Meta:

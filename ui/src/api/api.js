@@ -45,11 +45,26 @@ class ApiBase {
 
     async graphql(model, id, fields) {
         let query;
+
+        const isView = typeof id === "object";
         
-        if (id && fields) {
-            query = `query { ${model.toLowerCase()}(id: ${id}) { ${fields.join(", ")} } }`;
+        // lowercase first letter
+        let normalizedModelName = model[0].toLowerCase() + model.slice(1);
+        
+        if (isView) { // views may have miltiple ids
+            let queryId = Object.keys(id).map(k => `${k}: ${typeof id[k] === 'string' ? '"' + id[k] + '"' : id[k] }`).join(", ");
+
+            query = `query {
+                ${normalizedModelName}(${queryId}) {
+                    ${fields.join(" ")}
+                }
+            }`;
+            console.log(query);
+        }
+        else if (id && fields) {
+            query = `query { ${normalizedModelName}(id: ${id}) { ${fields.join(", ")} } }`;
         } else {
-            query = `query { ${model.toLowerCase()} }`; // request to get all entries
+            query = `query { ${normalizedModelName} }`; // request to get all entries
         }
 
         let response = await fetch(BASSE_URL + '/graphql/', {
@@ -61,7 +76,7 @@ class ApiBase {
             }
         });
 
-        return (await response.json()).data[model.toLowerCase()];
+        return (await response.json()).data[normalizedModelName];
     }
 }
 
@@ -122,7 +137,7 @@ class MsApi extends ApiBase {
     }
 
     async invitePlayer(player) {
-        return await this.post("player/invite", {player});
+        return await this.post("player/invite", {player_id: player.id});
     }
 
     async acceptInvite(invite) {
@@ -139,6 +154,15 @@ class MsApi extends ApiBase {
 
     async createTeam({name, short_name, location}) {
         return await this.post("roster/create", {name, short_name, location});
+    }
+
+    async findPlayer(query) {
+        let response = await this.get("player/find/" + query)
+        let playerId = response.player_id;
+        if (!playerId) {
+            return null;
+        }
+        return new Player(playerId);
     }
 
 }

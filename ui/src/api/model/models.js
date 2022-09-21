@@ -1,4 +1,5 @@
 import Model from './model.js';
+// import VirtualModel from './virtual.js';
 
 
 export class Game extends Model {
@@ -35,6 +36,12 @@ export class Player extends Model {
     static team = Team;
     static uuid = String;
     static role = Role;
+    static owned_team = Team;
+    static username = String;
+
+    isInTeam() {
+        return this.team != null;
+    }
 
     hasPermission(permission) {
 
@@ -121,3 +128,34 @@ for (let model of topLevelModels) {
     model.all = Model.all.bind(model);
     window.$registeredModels[model.name.toLowerCase()] = model;
 }
+
+export class AnonymousPlayer {
+    hasPermission() {
+        return false;
+    }
+
+    team = null;
+    owned_team = null;
+
+    isInTeam() {
+        return false;
+    }
+}
+
+export class FftPlayer extends Model {
+    static __virtualId = {
+        player_id: Number, 
+        team_id: Number
+    };
+
+    static uuid = String;
+    static username = String;
+    static invited = Boolean;
+    static id = Number;
+}
+
+export class FftPlayerView extends Model {
+    static players = [FftPlayer];
+}
+
+
