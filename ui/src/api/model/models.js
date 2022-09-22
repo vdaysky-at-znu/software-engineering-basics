@@ -12,12 +12,13 @@ export class Team extends Model {
 
     static short_name = String;
     static full_name = String;
+    static elo = Number;
 
 }
 
 export class Permission extends Model {
 
-    static __modelname = "Permission";
+    static __modelname = "PlayerPermission";
 
     static name = String;
 }
@@ -38,6 +39,7 @@ export class Player extends Model {
     static role = Role;
     static owned_team = Team;
     static username = String;
+    static elo = Number;
 
     isInTeam() {
         return this.team != null;
@@ -67,7 +69,7 @@ export class Player extends Model {
                 
 
                 if (present[i] != required[i]) {
-                    return present[i] != "*";
+                    return present[i] == "*";
                 }
             }
             return true;
@@ -104,12 +106,15 @@ export class MapPick extends Model {
 
 export class MapPickProcess extends Model {
 
-    maps = [MapPick];
+    static maps = [MapPick];
 
 }
 
 export class Match extends Model {
 
+    static __modelname = "Match";
+
+    static name = String;
     static team_one = Team;
     static team_two = Team;
     static map_pick_process = MapPickProcess;
@@ -117,7 +122,11 @@ export class Match extends Model {
 
 export class Event extends Model {
 
+    static __modelname = "Event";
+
     static matches = [Match];
+    static name = String;
+    static start_date = String;
 }
 
 const topLevelModels = [Game, Team, Player, MapPick, MapPickProcess, Match, Event];
@@ -126,7 +135,8 @@ window.$registeredModels = {};
 
 for (let model of topLevelModels) {
     model.all = Model.all.bind(model);
-    window.$registeredModels[model.name.toLowerCase()] = model;
+    let modelName = model.__modelname || model.name;
+    window.$registeredModels[modelName.toLowerCase()] = model;
 }
 
 export class AnonymousPlayer {
@@ -157,5 +167,4 @@ export class FftPlayer extends Model {
 export class FftPlayerView extends Model {
     static players = [FftPlayer];
 }
-
 

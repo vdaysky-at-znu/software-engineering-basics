@@ -1,12 +1,14 @@
 <template>
-  <v-row>
-      {{ event.name }}
-  </v-row>
+  <div>
+    <router-link :to="{name: 'event', params: {event: event.id} }">{{ event.name }}</router-link>
+  </div>
 </template>
 
 <script>
+
 export default {
-    props: ['event']
+    props: ['event'],
+
 }
 </script>
 

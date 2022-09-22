@@ -294,12 +294,19 @@ def DatabaseModelField( # NOQA
                 return default
 
             if not isinstance(v, type):
-                raise ValueError(f"type {type.__name__} is expected")
+                try:
+                    v = type(v)
+                except:
+                    raise ValueError(f"type {type.__name__} is expected")
 
             v = normalizer(v)
 
+            from django.db.models.query_utils import DeferredAttribute
+
+            field = getattr(model, primary_field)
+
             # primary field
-            q = model.objects.filter(**{getattr(model, primary_field): v})
+            q = model.objects.filter(**{field.field.attname if isinstance(field, DeferredAttribute) else field: v})
 
             for field_name in model_fields or []:
                 # make sure additional field is defined in model on the top level
@@ -312,7 +319,7 @@ def DatabaseModelField( # NOQA
                 # add additional field to query
                 q = q.filter(**{getattr(model, field_name): values[field_name]})
 
-            instance = q.get_or_none()
+            instance = q.first()
 
             if instance is None:
                 model_fields_summary = ", ".join([f'{k} = {repr(values[k])}' for k in model_fields or []])

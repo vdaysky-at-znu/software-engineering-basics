@@ -14,10 +14,6 @@ export default {
           players: Player.all(),
       }
   },
-  created() {
-    console.log("players", this.players);
-  }
-
 }
 </script>
 

@@ -60,6 +60,9 @@ class Player(AbstractUser):
     location_code = models.CharField(default=LocationCode.NONE, max_length=20)
     verified_at = models.DateTimeField(null=True, default=None)
 
+    def has_perm(self, perm, obj=None):
+        return self.role is not None and self.role.has_perm(perm)
+
     @property
     def permissions(self):
         return list(self.user_permissions.all() | Permission.objects.filter(group__user=self))
@@ -252,7 +255,7 @@ class GamePlayerEvent(models.Model):
 
 class MapPickProcessManager(models.Manager):
 
-    def create(self, turn):
+    def create(self):
         map_pick_process = MapPickProcess()
         map_pick_process.save()
 
@@ -270,7 +273,7 @@ class MapPickProcess(models.Model):
     next_action = models.IntegerField(default=1)
 
     # team that has to make a decision
-    turn = models.ForeignKey(Team, on_delete=models.CASCADE)
+    turn = models.ForeignKey(Team, null=True, on_delete=models.CASCADE)
 
     @property
     def last_action(self):
@@ -372,6 +375,26 @@ class Role(models.Model):
     chat_message_color = models.CharField(max_length=100)
     team_override_color = models.BooleanField(max_length=100)
     permissions = models.ManyToManyField(PlayerPermission, related_name="permissions")
+
+    def has_perm(self, perm):
+        for has_perm in self.permissions.all():
+            parts_present = has_perm.name.split(".")
+            parts_required = perm.split(".")
+
+            # present permission is more specific than required
+            if len(parts_present) > len(parts_required):
+                continue
+
+            # iterate both lists and check if they match
+            for pres, req in zip(parts_present, parts_required):
+                if pres != req:
+                    if pres == "*":
+                        return True
+                    break
+            else:
+                return True
+
+        return False
 
 
 class Article(models.Model):

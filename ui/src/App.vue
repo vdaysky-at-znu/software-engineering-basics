@@ -37,19 +37,20 @@
 
     <v-navigation-drawer color="grey-darken-2"></v-navigation-drawer>
     <v-navigation-drawer color="grey-darken-2" position="right"></v-navigation-drawer>
-    <v-main>
+    <v-main style="background: #efefef">
       <router-view></router-view>
     </v-main>
 
 
-    <v-footer>
+    <v-footer style="background: #efefef">
     
       <div class="d-flex flex-row align-end" style="width: 100%; height: 100%">
         <v-card
           elevation="0"
           rounded="0"
           width="100%"
-          class="bg-grey text-center"
+          class="text-center"
+          :style="{background: $vuetify.theme.themes.light.colors.background}"
         >
           <v-card-text>
             <v-btn

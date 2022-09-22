@@ -7,6 +7,7 @@ import PlayersView from '../views/PlayersView.vue'
 import EventView from '../views/EventView.vue'
 import EventsView from '../views/EventsView.vue'
 import MyProfile from '../views/MyProfile.vue'
+import MatchView from '../views/MatchView.vue'
 
 const routes = [
   {
@@ -48,7 +49,12 @@ const routes = [
     path: '/profile',
     name: 'profile',
     component: MyProfile,
-  },
+  }, 
+  {
+    path: '/match/:id',
+    name: 'match',
+    component: MatchView,
+  }
 ]
 
 const router = createRouter({

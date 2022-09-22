@@ -1,10 +1,33 @@
 <template>
     <v-container>
-        <v-row v-for="(player, i) in players" :key="i">
-            <v-col cols="12" sm="6" md="4" lg="3" xl="2" :key="i">
-                <player-widget :player="player"></player-widget>
-            </v-col>
-        </v-row>
+        <v-table>
+            <thead>
+                <tr>
+                    <th>
+                        #
+                    </th>
+                    <th>
+                        Player
+                    </th>
+                    <th>
+                        Elo
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(player, i) in players" :key="player">
+                    <td width="8%">
+                        {{ i + 1 }}.
+                    </td>
+                    <td>
+                        <player-widget :player="player"></player-widget>
+                    </td>
+                    <td>
+                        {{ player.elo }}
+                    </td>
+                </tr>
+            </tbody>
+        </v-table>
     </v-container>
 </template>
 

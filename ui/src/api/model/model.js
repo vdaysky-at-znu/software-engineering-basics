@@ -5,12 +5,14 @@ export class ModelManager {
     }
 
     makeReactive(model, id) {
-        console.log("make model reactive: ", model);
+        console.log("make model reactive: ",model);
+
+        let modelName = model.constructor.__modelname || model.constructor.name;
         /** Make object reactive by adding it to vuex */
-        let models_of_type = this.models[model.constructor.name] || {};
+        let models_of_type = this.models[modelName] || {};
         models_of_type[id] = model;
-        this.models[model.constructor.name] = models_of_type;
-        let reactive = window.$models.models[model.constructor.name][id];
+        this.models[modelName] = models_of_type;
+        let reactive = window.$models.models[modelName][id];
         return reactive;
     }
     
@@ -35,24 +37,28 @@ export class ModelManager {
         }
 
         let models_of_type = this.models[modelName] || {};
+
+        let model = models_of_type[id];
+        
+        console.log("get type", modelName, "with id", id);
+        if (!model && modelName == 'all') {
+            console.log("its all, set to empty list");
+            models_of_type[id] = []
+        }
+
+        this.models[modelName] = models_of_type;
+        console.log("return all", models_of_type[id]);
         return models_of_type[id];
     }
 }
-
-// function serializeGraphqlParams(params) {
-//     let result = "";
-//     for (let key of Object.keys(params)) {
-//         result += key + " ";
-//     }
-//     return result;
-// }
 
 const fieldNameMap = (field) => {
     let mapping = {
         members: "member_ids",
         permissions: "permission_ids",
         players: "player_ids",
-        
+        matches: "match_ids",
+        maps: "map_ids",
     }
 
     if (mapping[field]) {
@@ -167,7 +173,7 @@ export default function Model(id) {
 }
 
 Model.getGraphqlFields = function(isView) {
-        
+
     if (this.fields) {
         return this.fields;
     }
@@ -246,9 +252,10 @@ Model.all = function () {
         return this.__all;
     }
 
-    this.__all = window.$models.makeObejctReactive("all", [], this.name.toLowerCase());
+    let modelName = this.__modelname || this.name;
+    this.__all = window.$models.makeObejctReactive("all", [], modelName.toLowerCase());
 
-    getAll(this, this.name.toLowerCase() + "_ids").then(
+    getAll(this, modelName.toLowerCase() + "_ids").then(
         x => this.__all.push(...x)
     );
 

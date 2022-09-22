@@ -18,6 +18,7 @@ class CreateMatch(BaseModel):
     @validator('map_count')
     def validate_map_count(cls, v):
         assert v in [1, 3, 5], 'Invalid map count'
+        return v
 
 
 class PickMap(BaseModel):

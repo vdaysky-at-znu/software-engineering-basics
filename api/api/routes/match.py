@@ -8,7 +8,7 @@ router = APIRouter()
 
 
 @router.post('/create')
-def create_match(data: CreateMatch, player: Player = PlayerAuthDependency):
+async def create_match(data: CreateMatch, player: Player = PlayerAuthDependency):
 
     if not player.has_perm('api.can_create_matches'):
         raise PermissionError
@@ -22,7 +22,7 @@ def create_match(data: CreateMatch, player: Player = PlayerAuthDependency):
         map_count=data.map_count
     )
 
-    return match
+    return match.id
 
 
 @router.post('/{match}/map-pick')
