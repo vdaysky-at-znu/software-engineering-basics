@@ -1,8 +1,10 @@
 import inspect
 import random
 import sys
+import traceback
 from collections import defaultdict
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, List, get_args
+
 
 from ariadne import ObjectType
 
@@ -11,11 +13,21 @@ def computed(method):
     sig = inspect.signature(method)
 
     return_type = sig.return_annotation
+    param_sig = []
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
+        param_sig.append({
+            "type": param.annotation,
+            "name": name,
+            "required": param.default == inspect.Parameter.empty
+        })
 
     method._prop_meta = [
         method.__name__,
         method,
-        return_type
+        return_type,
+        param_sig
     ]
 
     return method
@@ -24,14 +36,23 @@ def computed(method):
 class TableManager:
     def __init__(self):
         self.models = []
+
         self.queryable = []
         self.gql_objects = []
+
+        # list of models that have to be converted
+        # to string type representation
+        self.models_to_process = {}
 
     def get_gql_objects(self):
         return self.gql_objects
 
     def _add_cls(self, model, queryable):
+
         self.models.append(model)
+        print(f"Adding model to process {model.__name__}")
+        self.models_to_process[model.__name__] = model
+
         if queryable:
             self.queryable.append(model)
 
@@ -48,22 +69,46 @@ class TableManager:
             model._computed_props[model.__name__].append(meta)
 
     def table(self, *func, **kwargs):
-
         if not func:
             def wrapper(cls):
                 self._add_cls(cls, kwargs["queryable"])
                 return cls
+
             return wrapper
         else:
             func = func[0]
             self._add_cls(func, True)
             return func
 
+    def type(self, cls):
+        """ GraphQL type. Difference from table is that type is not queryable.
+            Also type can ge generic, which means multiple GraphQL types will be created.
+        """
+        # map table manager to type class, because we will need to create helper type
+        # inside same manager as this type
+        cls._table_mgr = self
+        return cls
+
     def get_graphql_requests(self):
         return "".join([x.create_graphql_request() for x in self.queryable])
 
     def get_graphql_responses(self):
-        return "".join([x.create_graphql_response() for x in self.models])
+        typedefs = ""
+        compiled = set()
+        print(f"compile graphql")
+        while self.models_to_process:
+            key = self.models_to_process.keys().__iter__().__next__()
+
+            if key in compiled:
+                continue
+
+            compiled.add(key)
+
+            print(f"compile model {key}")
+            model = self.models_to_process.pop(key)
+            typedefs += model.create_graphql_response()
+
+        return typedefs
 
     def define_resolvers(self, query):
 
@@ -76,9 +121,9 @@ class TableManager:
 
             dec(resolve_thing)
 
-        def make_resolver(gql_obj, name, prop):
+        def make_resolver(gql_obj, name, prop, args):
             dec = gql_obj.field(name)
-            dec(lambda obj, info: prop(obj))
+            dec(lambda obj, info, **kwargs: prop(obj, **kwargs))
 
         for model in self.queryable:
             make_handler(model)
@@ -86,8 +131,8 @@ class TableManager:
             gql_obj = ObjectType(model.get_type_name())
             self.gql_objects.append(gql_obj)
 
-            for name, prop, return_type in model.get_custom_resolvers():
-                make_resolver(gql_obj, name, prop)
+            for name, prop, return_type, args in model.get_custom_resolvers():
+                make_resolver(gql_obj, name, prop, args)
 
 
 field_type_map = {
@@ -97,20 +142,81 @@ field_type_map = {
 }
 
 
-def format_typed_arg(typed_arg):
-    type = typed_arg.__args__[0]
+def pythonic_to_graphql(type, field_owner=None):
+    """ Converts a python type to a graphql type. """
 
-    from django.db.models import Model
+    if hasattr(type, '__origin__'):
+        origin = type.__origin__
+        generic_type = type.__args__[0]
+    else:
+        origin = None
+        generic_type = None
+
+    if origin and issubclass(origin, VirtualGenericTable):
+        # we have a parametrized custom type.
+        print(f"generate_helper_table_name to graphql: {type} {origin} ")
+
+        # we detected a custom type, so we need to generate a helper table.
+        # example: Page[CustomIdType]
+
+        helper_type_name = generate_helper_table_name(origin, generic_type)
+
+        class HelperType(origin):
+            # TODO: store a dictionary of generic vars here instead of single var
+            #  to support multiple generic vars, like Page[CustomIdType, Int32]
+            _generic_type = generic_type
+
+        HelperType.__name__ = helper_type_name
+
+        print(f"Add helper type {helper_type_name}")
+        origin._table_mgr._add_cls(HelperType, False)
+
+        return helper_type_name
+
+    if isinstance(type, AbstractTable):
+        return type.get_type_name()
+
+    if origin and issubclass(origin, AbstractTable):
+        return origin.get_type_name()
+
+    if origin is list:
+        return f"[{format_typed_arg(type, field_owner)}]"
 
     if type in field_type_map:
         return field_type_map[type]
 
-    if issubclass(type, Model):
-        return f"{type.__name__}_id"
-    if issubclass(type, AbstractTable):
-        return type.get_type_name()
+    return type.__name__
+
+
+def generate_helper_table_name(base, generic_type):
+    return f"GenericHelper__{base.__name__}__{generic_type.__name__}"
+
+
+def format_typed_arg(typed_arg, field_owner=None):
+    """
+        Formats a typed argument for graphql considering it's content.
+        List[Player] will become Player, List[int] will become Int, etc.
+    """
+
+    print(f"format_typed_arg: {typed_arg}")
+
+    generic_arg = typed_arg.__args__[0]
+
+    from django.db.models import Model
+
+    if isinstance(generic_arg, TypeVar):
+        # TODO: get generic var type by name from dictionary
+        generic_arg = field_owner._generic_type
+
+    if generic_arg in field_type_map:
+        return field_type_map[generic_arg]
+
+    if issubclass(generic_arg, Model):
+        return f"{generic_arg.__name__}_id"
+    if issubclass(generic_arg, AbstractTable):
+        return generic_arg.get_type_name()
     else:
-        raise ValueError(f"Unknown type {type}")
+        raise ValueError(f"Unknown type {generic_arg}")
 
 
 class AbstractTable:
@@ -118,6 +224,10 @@ class AbstractTable:
 
     @classmethod
     def create_graphql_request(cls):
+        """
+            player(id: Int!): Player
+        """
+
         raise NotImplementedError
 
     @classmethod
@@ -130,7 +240,6 @@ class AbstractTable:
 
     @classmethod
     def get_custom_resolvers(cls):
-        print(f"calss {cls} has custom resolvers: {cls._computed_props[cls.__name__]}")
         return cls._computed_props[cls.__name__]
 
     @classmethod
@@ -140,32 +249,38 @@ class AbstractTable:
     @classmethod
     def get_model_fields(cls):
         fields = []
-        for name, prop, return_type in cls.get_custom_resolvers():
-            fields.append([name, return_type])
+        for name, prop, return_type, args in cls.get_custom_resolvers():
+            fields.append([name, return_type, args])
 
         if hasattr(cls, "__annotations__"):
             for name, type in cls.__annotations__.items():
-                fields.append([name, type])
+                fields.append([name, type, []])
 
         return fields
 
     @classmethod
     def create_graphql_response(cls):
+        """
+            Creates GraphQl definition of model type.
+            Includes all fields and computed properties.
+
+            type Player { username elo team_id }
+        """
 
         from django.db.models import Model
 
         result = f"type {cls.get_type_name()} {{\n"
 
-        for field, type in cls.get_model_fields():
+        for field, type, args in cls.get_model_fields():
+            field_args = ""
 
-            if hasattr(type, '__origin__') and type.__origin__ is list:
-                result += f"    {field}: [{format_typed_arg(type)}]\n"
-            elif inspect.isclass(type) and issubclass(type, Model):
+            if args:
+                field_args = "(" + ", ".join([f"{x['name']}: {pythonic_to_graphql(x['type'], field_owner=cls)}" for x in args]) + ")"
+
+            if inspect.isclass(type) and issubclass(type, Model):
                 raise ValueError("Model in graphql object, use id instead!")
-            elif inspect.isclass(type) and issubclass(type, AbstractTable):
-                result += f"    {field}: {type.get_type_name()}\n"
-            else:
-                result += f"    {field}: {field_type_map[type]}\n"
+
+            result += f"    {field}{field_args}: {pythonic_to_graphql(type, field_owner=cls)}\n"
 
         result += "}\n"
 
@@ -173,8 +288,6 @@ class AbstractTable:
 
 
 T = TypeVar("T")
-
-from typing import get_args
 
 
 class Table(Generic[T], AbstractTable):
@@ -202,7 +315,6 @@ class Table(Generic[T], AbstractTable):
     @classmethod
     def get_field_name(cls):
         n = cls._type_T.__name__[0].lower() + cls._type_T.__name__[1:]
-        print(f"table name: {n}")
         return n
 
 
@@ -210,6 +322,9 @@ class VirtualTable(AbstractTable):
     """
         Virtual tables are tables that are not stored in the database, but are instead generated from other tables.
         They can have similar interface to a normal table, but they might have multiple primary keys defining them.
+
+        The main difference between a virtual table and a normal table is that virtual tables build their requests
+        dynamically, based on init arguments. They are resolved just like normal tables, through constructor.
     """
 
     @classmethod
@@ -237,9 +352,40 @@ class VirtualTable(AbstractTable):
     def get_type_name(cls):
         return cls.__name__
 
-
     @classmethod
     def resolve(cls, **args):
-        return cls(**args)
+        try:
+            return cls(**args)
+        except Exception as e:
+            traceback.print_exc()
+            raise ValueError(f"Could not init {cls} with {args}")
 
 
+class VirtualGenericTable(VirtualTable):
+    pass
+
+
+X = TypeVar("X")
+
+
+class PaginatedTable(Generic[X], VirtualTable):
+    count: int
+    items: List[X]
+
+    def __init_subclass__(cls) -> None:
+        cls._type_T = get_args(cls.__orig_bases__[0])[0]
+        # stupid hack to ensure that list type is accessible
+        cls.__annotations__['items'].__args__ = [cls._type_T]
+
+    def __init__(self, items: List[X], page: int, size: int):
+        self.items = items[page * size: (page + 1) * size]
+        self.count = len(items)
+
+
+Y = TypeVar("Y")
+
+
+class PList(Generic[Y]):
+
+    def __init_subclass__(cls) -> None:
+        cls._type_T = get_args(cls.__orig_bases__[0])[0]

@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Dict, Optional, List
 
 from django.db.models import Model
-from starlette.websockets import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from api.events.event import EventOut, AbsEvent
 
@@ -83,6 +83,12 @@ class WsSessionManager:
 
         print(f"broadcast to {cls._connections}")
         for conn in cls._connections:
+
+            # remove disconnected clients
+            if conn.websocket.client_state == 3:
+                cls._connections.remove(conn)
+                continue
+
             asyncio.create_task(conn.send_event(evt))
 
         if cls._bukkit:
@@ -134,7 +140,13 @@ class WebsocketConnection:
             asyncio.create_task(coro)
 
     async def send_event(self, event: EventOut):
+
+        if self.websocket.client_state == WebSocketState.DISCONNECTED:
+            WsSessionManager.disconnect(self)
+            raise ValueError("Client disconnected")
+
         response = Future()
         self.awaiting_response[event.message_id] = response
+
         await self.websocket.send_json(event.dict())
         return await response

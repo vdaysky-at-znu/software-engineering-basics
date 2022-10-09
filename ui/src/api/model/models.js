@@ -1,9 +1,13 @@
-import Model from './model.js';
+import Model, { Page } from './model.js';
 // import VirtualModel from './virtual.js';
 
 
 export class Game extends Model {
-
+    static map = String;
+    static is_started = Boolean;
+    static is_finished = Boolean;
+    static score_a = Number;
+    static score_b = Number;
 }
 
 export class Team extends Model {
@@ -28,7 +32,7 @@ export class Role extends Model {
     static __modelname = "Role";
 
     static name = String;
-    static permissions = [Permission]
+    static permissions = Page(Permission)
 
 }
 
@@ -41,8 +45,16 @@ export class Player extends Model {
     static username = String;
     static elo = Number;
 
-    isInTeam() {
-        return this.team != null;
+    isAuthenticated() {
+        return this.uuid != null;
+    }
+
+    isInTeam(team) {
+        if (this.team == null) return false;
+        if (team) {
+            return this.team.id == team.id;
+        }
+        return true;
     }
 
     hasPermission(permission) {
@@ -85,28 +97,35 @@ export class Player extends Model {
     }
 }  
 
-Team.members = [Player];
+Team.members = Page(Player);
 
 export class MapPick extends Model {
 
     static selected_by = Team;
+    static map_name = String;
+    static picked = Boolean;
 
-    get is_selected() {
+
+    isSelected() {
         return this.selected_by != null;
     }
 
-    get is_banned() {
-        return this.is_selected && !this.picked
+    isBanned() {
+       return this.isSelected() && !this.picked
     }
 
-    get is_picked() {
-        return this.is_selected && this.picked
+    isPicked() {
+        return this.isSelected() && this.picked
     }
 }
 
 export class MapPickProcess extends Model {
 
-    static maps = [MapPick];
+    static maps = Page(MapPick);
+    static turn = Team;
+    // 1 = ban, 2 = pick, 3 = default, 0 = null
+    static next_action = String;
+    static finished = Boolean;
 
 }
 
@@ -118,13 +137,18 @@ export class Match extends Model {
     static team_one = Team;
     static team_two = Team;
     static map_pick_process = MapPickProcess;
+    static games = Page(Game);
 }
+
+Game.match = Match;
+
+MapPickProcess.match = Match;
 
 export class Event extends Model {
 
     static __modelname = "Event";
 
-    static matches = [Match];
+    static matches = Page(Match);
     static name = String;
     static start_date = String;
 }
@@ -141,6 +165,9 @@ for (let model of topLevelModels) {
 
 export class AnonymousPlayer {
     hasPermission() {
+        return false;
+    }
+    isAuthenticated() {
         return false;
     }
 
@@ -165,6 +192,13 @@ export class FftPlayer extends Model {
 }
 
 export class FftPlayerView extends Model {
-    static players = [FftPlayer];
+    static players = Page(FftPlayer);
 }
 
+export class TopPlayersView extends Model {
+    static __virtualId = {
+        criteria: String
+    }
+
+    static players = Page(Player);
+}

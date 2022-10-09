@@ -1,11 +1,15 @@
 <template>
   <v-container>
     <v-row>
+      <v-col class="">
+        <h1>Events</h1><code>{{events.count}} event found</code>
+      </v-col>
+    </v-row>
+    <v-row>
       <v-col class="pa-0">
-        <v-container>
-          <v-row>
-            <v-col class="d-flex align-end">
-              <assert-permission permission="*">
+        <contextual-list :source="events" :listComponent="EventsList" propname="events" interactive paginated>
+            <template v-slot:createForm>
+                <assert-permission permission="*">
                 <ModalDialog
                   title="Create new event"
                   button="Create"
@@ -48,32 +52,8 @@
                   </template>
                 </ModalDialog>
               </assert-permission>
-            </v-col>
-            <v-col>
-              <div class="d-flex">
-                <v-text-field
-                  v-model="search"
-                  label="Search..."
-                  hide-details="hide"
-                >
-                  <template v-slot:appendInner="{}">
-                    <v-icon>mdi-magnify</v-icon>
-                  </template>
-                </v-text-field>
-
-                <v-btn class="ms-3" icon>
-                  <v-icon>mdi-filter-variant</v-icon>
-                </v-btn>
-              </div>
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-col>
-    </v-row>
-
-    <v-row>
-      <v-col class="pa-0">
-        <EventsList :events="filteredEvents"></EventsList>
+            </template>
+        </contextual-list>
       </v-col>
     </v-row>
   </v-container>
@@ -85,8 +65,19 @@ import EventsList from "@/components/lists/EventsList.vue";
 import ModalDialog from "@/components/ModalDialog.vue";
 import AssertPermission from "@/components/AssertPermission.vue";
 import CustomForm from "@/components/common/CustomForm.vue";
+import ContextualList from "@/components/contextual/ContextualList.vue";
 export default {
-  components: { EventsList, ModalDialog, AssertPermission, CustomForm },
+  components: {
+    ModalDialog,
+    AssertPermission,
+    CustomForm,
+    ContextualList,
+  },
+  setup() {
+    return {
+      EventsList,
+    };
+  },
   data() {
     return {
       events: Event.all(),
@@ -95,16 +86,16 @@ export default {
     };
   },
 
-  computed: {
-    filteredEvents() {
-      // todo: actual advanced search making use of data views
-      return this.events.filter((evt) => {
-        return evt?.name
-          ?.toLowerCase?.()
-          ?.includes?.(this.search.toLowerCase());
-      });
+  watch: {
+    search: function () {
+      // this.events.applyFilter("search", val);
     },
   },
+
+  created() {
+    console.log("all events", this.events.constructor.name);
+  },
+
   methods: {
     async createEvent() {
       await this.$api.createEvent({

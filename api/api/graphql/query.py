@@ -1,14 +1,26 @@
 import inspect
 import json
-from typing import List
+from typing import List, TypeVar, Generic, get_args, Type
 
 from ariadne import QueryType, make_executable_schema, ObjectType
 
-from api.graphql.virtual import TableManager, VirtualTable, Table, computed
+from api.graphql.virtual import TableManager, VirtualTable, Table, computed, PaginatedTable, VirtualGenericTable
 from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite, \
-    MapPickProcess, MapPick
+    MapPickProcess, MapPick, GamePlayerEvent
 
 tableManager = TableManager()
+
+T = TypeVar('T')
+
+
+@tableManager.type
+class Page(Generic[T], VirtualGenericTable):
+    count: int
+    items: List[T]
+
+    def __init__(self, count: int, items: List[T]):
+        self.count = count
+        self.items = items
 
 
 @tableManager.table
@@ -18,8 +30,8 @@ class EventTable(Table[Event]):
     start_date: str
 
     @computed
-    def match_ids(self) -> List[int]:
-        return [match.id for match in self.matches.all()]
+    def match_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+        return Page(self.matches.count(), self.matches.values_list('id', flat=True)[page * count:page * count + count])
 
 
 @tableManager.table
@@ -47,8 +59,8 @@ class RoleTable(Table[Role]):
     team_override_color: bool
 
     @computed
-    def permission_ids(self) -> List[int]:
-        return [perm.id for perm in self.permissions.all()]
+    def permission_ids(self, page: int = 0, size: int = 10) -> Page[int]:
+        return Page(self.permissions.count(), self.permissions.values_list('id', flat=True)[page * size:page * size + size])
 
 
 @tableManager.table
@@ -68,8 +80,9 @@ class TeamTable(Table[Team]):
     location_code: str
 
     @computed
-    def member_ids(self) -> List[int]:
-        return [p.id for p in Player.objects.filter(team_id=self.id)]
+    def member_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+        _all = Player.objects.filter(team_id=self.id)
+        return Page(_all.count(), [player.id for player in _all[page * count:page * count + count]])
 
 
 @tableManager.table
@@ -82,6 +95,11 @@ class MatchTable(Table[Match]):
     start_date: str
     map_count: int
     map_pick_process_id: int
+
+    @computed
+    def game_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+        _all = Game.objects.filter(match_id=self.id)
+        return Page(_all.count(), [game.id for game in _all[page * count:page * count + count]])
 
 
 @tableManager.table(queryable=False)
@@ -98,13 +116,15 @@ class Config(VirtualTable):
 class GameTable(Table[Game]):
     id: int
     map: str
-    finished: bool
-    started: bool
+    is_finished: bool
+    is_started: bool
     match_id: int
     team_a_id: int
     team_b_id: int
     config: Config
     plugins: List[str]
+    score_a: int
+    score_b: int
 
     @computed
     def session_ids(self) -> List[int]:
@@ -131,8 +151,12 @@ class MapPickProcessTable(Table[MapPickProcess]):
     turn_id: int
 
     @computed
-    def map_ids(self) -> List[int]:
-        return [m.id for m in self.maps.all()]
+    def match_id(self) -> int:
+        return self.match.id
+
+    @computed
+    def map_ids(self, page: int = 0, size: int = 10) -> Page[int]:
+        return Page(self.maps.count(), self.maps.values_list('id', flat=True)[page * size:page * size + size])
 
 
 @tableManager.table
@@ -187,14 +211,59 @@ class FftPlayerId(VirtualTable):
 class FftPlayerView(VirtualTable):
 
     @computed
-    def player_ids(self) -> List[FftPlayerId]:
-        return [
-            FftPlayerId(player_id=player.id, team_id=self.team_id)
-            for player in Player.objects.filter(team=None)
-        ]
+    def player_ids(self, page: int = 0, size: int = 10) -> Page[FftPlayerId]:
+        _all = Player.objects.filter(team=None)
+        return Page(
+            _all.count(),
+            [FftPlayerId(player.id, self.team_id) for player in _all[page * size:page * size + size]]
+        )
 
     def __init__(self, team_id: int):
         self.team_id = team_id
+
+
+@tableManager.table
+class ManyToOne(PaginatedTable[int]):
+
+    def __init__(self, model: str, page: int, size: int, id: int = None, field: str = None):
+        from django.apps import apps
+
+        if id is None and field is None:
+            model = apps.get_model('api', model).objects.all()
+            ids = [m.id for m in model]
+        else:
+            model = apps.get_model('api', model).objects.get(id=id)
+            ids = [getattr(obj, 'id') for obj in getattr(model, field).all()]
+
+        super().__init__(ids, page, size)
+
+
+@tableManager.table
+class GameStatsView(VirtualTable):
+
+    events = []
+
+    def __init__(self, game_id: int = None, in_game_team_id: int = None, player_id: int = None, events: str = None):
+        self.game_id = game_id
+        self.in_game_team_id = in_game_team_id
+        self.player_id = player_id
+        self.events = events.replace(" ", "").split(',') if events else []
+
+        stats = GamePlayerEvent.objects.all()
+
+        if events:
+            stats = stats.filter(event__in=events)
+
+        if player_id:
+            stats = stats.filter(player_id=player_id)
+
+        if in_game_team_id:
+            team = InGameTeam.objects.get(id=in_game_team_id)
+            stats = stats.filter(game=team.game, player_id__in=team.sessions.values_list('player.id', flat=True))
+
+        if game_id:
+            stats = stats.filter(game_id=game_id)
+
 
 
 type_defs = """
@@ -206,7 +275,7 @@ type_defs = """
         match_ids: [Int],
         
         server(id: Int): Server
-        """ + tableManager.get_graphql_requests() + """
+""" + tableManager.get_graphql_requests() + """
     }
     
     type Server {
@@ -215,14 +284,7 @@ type_defs = """
         id: Int
     }
     
-    """ + tableManager.get_graphql_responses() + """
-    
-    type Hub {
-        id: Int
-        world: String
-        players: [Player]
-        player_ids: [Int]
-    }
+""" + tableManager.get_graphql_responses() + """
     
 """
 

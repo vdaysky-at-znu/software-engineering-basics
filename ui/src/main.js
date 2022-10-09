@@ -27,17 +27,20 @@ const reactiveModels = {
       let modelId = data.payload.model_pk;
       let model = window.$models.get(modelName, modelId);
   
-      if (!model) return;
+      if (!model){
+        console.log("Model not found", modelName, modelId);
+        return;
+      }
   
       model.load();
     });
     
-    window.$socket.onEvent("ModelCreateEvent", (data) => {
-      let modelName = data.payload.model_name;
-      let modelId = data.payload.model_pk;
-      let model = new window.$registeredModels[modelName](modelId);
-      window.$models.get("all", modelName).push(model);
-    });
+    // window.$socket.onEvent("ModelCreateEvent", (data) => {
+    //   let modelName = data.payload.model_name;
+    //   let modelId = data.payload.model_pk;
+    //   let model = new window.$registeredModels[modelName](modelId);
+    //   window.$models.get("all", modelName).push(model);
+    // });
 
   }
 }

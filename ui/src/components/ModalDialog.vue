@@ -38,10 +38,6 @@ export default {
   }),
   watch: {
 
-    dialog() {
-      console.log('dialog', this.dialog);
-    }
-
   },
   methods: {
     close() {

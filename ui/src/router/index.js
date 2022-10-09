@@ -8,6 +8,7 @@ import EventView from '../views/EventView.vue'
 import EventsView from '../views/EventsView.vue'
 import MyProfile from '../views/MyProfile.vue'
 import MatchView from '../views/MatchView.vue'
+import GameView from '../views/GameView.vue'
 
 const routes = [
   {
@@ -54,6 +55,11 @@ const routes = [
     path: '/match/:id',
     name: 'match',
     component: MatchView,
+  }, 
+  {
+    path: '/game/:id',
+    name: 'game',
+    component: GameView,
   }
 ]
 

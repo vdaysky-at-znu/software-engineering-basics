@@ -47,9 +47,9 @@
 
             </div>
 
-            <div v-if="player.isInTeam()">
-              <h3>Member of</h3>
-              <p>{{ player.team.short_name }}</p>
+            <div class="d-flex" v-if="player.isInTeam()">
+              <h3 class="me-3">Member of</h3>
+              <team-widget :team="player.team"></team-widget>
             </div>
 
             <v-btn block color="error">Log Out</v-btn>

@@ -3,13 +3,15 @@ import traceback
 from typing import Optional, Type, List, Any, Callable
 from uuid import UUID
 
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.models import Session
 from fastapi import Request, HTTPException, Depends, params, Query, Response
 from pydantic.class_validators import root_validator
 from pydantic.main import create_model
 from django.db.models import Model
 
-from api.models import Team, Player, AuthSession, Event, Match, Game, Invite, InGameTeam
+from api.exceptions import AuthorizationError
+from api.models import Team, Player, AuthSession, Event, Match, Game, Invite, InGameTeam, MapPick
 
 # Inherit str to make type serializable by openapi
 from api.util import OrmBaseModel
@@ -348,6 +350,7 @@ def depends_factory(model, api_field, api_field_type, db_field="id", required=Fa
         except Exception:
             traceback.print_exc()
             pass
+
         raise HTTPException(status_code=404, detail=f"{model.__name__} with {db_field} of {value} not found")
 
     param = {
@@ -376,6 +379,7 @@ def PlayerDependency(required=True):
 
 
 def get_session(request: Request, response: Response):
+    """ Get session from request or create new one """
 
     session_id = request.headers.get('session_id')
     session = None
@@ -395,8 +399,15 @@ def get_session(request: Request, response: Response):
 SessionDependency = Depends(get_session)
 
 
-def get_player(session: Session = SessionDependency):
-    return session.player
+def get_player(session: AuthSession = SessionDependency):
+    """ Get player from session. If session does not have player, throw an error """
+
+    player = session.player
+
+    if player is None:
+        raise AuthorizationError("Player is not found")
+
+    return player
 
 
 InviteDependency = depends_factory(Invite, 'invite', int, 'id', True)
@@ -410,3 +421,4 @@ GameField = DatabaseModelField(model=Game, primary_field="id", type=int)
 TeamField = DatabaseModelField(model=Team, primary_field="id", type=int)
 PlayerField = DatabaseModelField(model=Player, primary_field="id", type=int)
 InGameTeamField = DatabaseModelField(model=InGameTeam, primary_field="id", type=int)
+MapPickField = DatabaseModelField(model=MapPick, primary_field="id", type=int)

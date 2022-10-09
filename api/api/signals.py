@@ -4,7 +4,7 @@ from asgiref.sync import sync_to_async, async_to_sync
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import Signal, receiver
 
-from api.models import Event, Match, Game, Player, Team
+from api.models import Event, Match, Game, Player, Team, MapPick, MapPickProcess
 
 
 def register_sync_var(model):
@@ -32,7 +32,9 @@ synced_models = {
     Game,
     Event,
     Player,
-    Team
+    Team,
+    MapPick,
+    MapPickProcess,
 }
 
 

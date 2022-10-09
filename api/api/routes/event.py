@@ -1,3 +1,5 @@
+import random
+import string
 from datetime import datetime
 
 from fastapi import APIRouter
@@ -10,6 +12,17 @@ from api.exceptions import PermissionError, BadRequestError
 import pytz
 
 router = APIRouter()
+
+
+@router.get("/test")
+async def test():
+    # generate random combination of characters
+    name = "".join(random.choices(string.ascii_letters + string.digits, k=10))
+
+    Event.objects.create(
+        name=name,
+        start_date=datetime.now(pytz.utc),
+    )
 
 
 @router.post('/create')

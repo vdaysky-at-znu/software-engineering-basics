@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import random
 from datetime import datetime
@@ -11,7 +12,7 @@ from django.db import models
 
 from django.contrib.auth.models import AbstractUser, Permission
 
-from api.constants import LocationCode
+from api.constants import LocationCode, GameMap
 
 
 class Team(models.Model):
@@ -30,14 +31,10 @@ class Player(AbstractUser):
 
     class UserManager(BaseUserManager):
 
-        def create_user(self, username, uuid, password):
+        def create_user(self, username, uuid, password, role):
 
-            user = Player.objects.create(uuid=uuid, username=username)
+            user = Player.objects.create(uuid=uuid, username=username, role=role)
             user.set_password(password)
-
-            # default perms
-            perm = Permission.objects.get(codename="can_create_teams")
-            user.user_permissions.add(perm)
 
             user.save()
             return user
@@ -144,6 +141,16 @@ class InGameTeam(models.Model):
             player.elo = max(0, player.elo - elo)
             player.save()
 
+    @classmethod
+    def from_team(cls, team: Team, is_ct: bool):
+        team_1 = InGameTeam.objects.create(
+            name=team.short_name,
+            starts_as_ct=is_ct,
+            is_ct=is_ct
+        )
+
+        return team_1
+
 
 class Game(models.Model):
 
@@ -177,6 +184,10 @@ class Game(models.Model):
     # Plugins
     plugins = models.JSONField(default=list)
 
+    # Whitelist
+    whitelist = models.ManyToManyField(Player, related_name="whitelisted_games")
+    blacklist = models.ManyToManyField(Player, related_name="blacklisted_games")
+
     @property
     def is_started(self):
         return self.status == self.Status.STARTED
@@ -199,6 +210,14 @@ class Game(models.Model):
 
     def has_plugin(self, plugin):
         return self.plugins and plugin in self.plugins
+
+    @property
+    def score_a(self):
+        return Round.objects.filter(game=self, winner=self.team_a).count()
+
+    @property
+    def score_b(self):
+        return Round.objects.filter(game=self, winner=self.team_b).count()
 
 
 class Round(models.Model):
@@ -231,6 +250,13 @@ class GamePlayerEvent(models.Model):
         This table can be used in many ways to analyze player activity
     """
 
+    class Type:
+        KILL = "KILL"
+        DEATH = "DEATH"
+        ASSIST = "ASSIST"
+        BOMB_PLANT = "BOMB_PLANT"
+        BOMB_DEFUSE = "BOMB_DEFUSE"
+
     # Event name
     event = models.CharField(max_length=255)
 
@@ -259,13 +285,18 @@ class MapPickProcessManager(models.Manager):
         map_pick_process = MapPickProcess()
         map_pick_process.save()
 
-        for map in ('Mirage', 'Inferno', 'Train', 'Dust II', 'Overpass', 'Nuke', 'Cache'):
-            MapPick.objects.create(process=map_pick_process, map_name=map)
+        for map in GameMap:
+            MapPick.objects.create(process=map_pick_process, map=map)
 
         return map_pick_process
 
 
 class MapPickProcess(models.Model):
+
+    class Action:
+        PICK = 2
+        BAN = 1
+        NULL = 0
 
     finished = models.BooleanField(default=False)
 
@@ -334,11 +365,12 @@ class Event(models.Model):
 
 class MapPickManager(models.Manager):
 
-    def create(self, process, map_name, team=None, is_pick=None):
+    def create(self, process, map: GameMap, team=None, is_pick=None):
 
         pick = MapPick(
             process=process,
-            map_name=map_name,
+            map_name=map.value,
+            map_codename=map.name,
             selected_by=team,
             picked=is_pick,
         )
@@ -352,7 +384,10 @@ class MapPick(models.Model):
 
     process = models.ForeignKey("MapPickProcess", models.CASCADE, related_name="maps")
 
+    # nice name
     map_name = models.CharField(max_length=100)
+    # codename used by bukkit
+    map_codename = models.CharField(max_length=100)
     selected_by = models.ForeignKey(Team, models.CASCADE, null=True, default=None)
     picked = models.BooleanField(null=True, default=None)
     objects = MapPickManager()

@@ -4,7 +4,7 @@ from pydantic.class_validators import validator
 from pydantic.main import BaseModel
 
 from api.constants import GameMap
-from api.dependencies import EventField, TeamField
+from api.dependencies import EventField, TeamField, MapPickField
 
 
 class CreateMatch(BaseModel):
@@ -22,5 +22,4 @@ class CreateMatch(BaseModel):
 
 
 class PickMap(BaseModel):
-    map: GameMap
-    is_picked: bool
+    map: MapPickField
