@@ -334,6 +334,11 @@ GraphQlQuery.getGraphqlFields = function(isView) {
             fields[fieldName] = field;
             continue;
         }
+        
+        // resolve model dynamically by name
+        if (typeof field == 'string') {
+            field = window.$registeredModels[field.toLowerCase()];
+        }
 
         if (
             field instanceof Function && 
@@ -354,16 +359,23 @@ GraphQlQuery.getGraphqlFields = function(isView) {
 
         if (Array.isArray(field)) {
             
+            let arrayItemType = field[0];
+
+            // resolve model dynamically by name
+            if (typeof arrayItemType == 'string') {
+                arrayItemType = window.$registeredModels[arrayItemType.toLowerCase()];
+            }
+
             if (this.__isPage) {
                 fields[fieldName] = new FieldType(
-                    field[0],
+                    arrayItemType,
                     true,
                     {explicit: true} // make sure 'items' field on page stays the same without id suffix
                 );
                 continue;
             } 
 
-            let pageType = Page(field[0]);
+            let pageType = Page(arrayItemType);
             
             console.log("set page type on", this.name, "for field", fieldName);
             fields[fieldName] = new FieldType(
@@ -417,6 +429,7 @@ GraphQlQuery.toGraphQl = function() {
 }
 
 export function Page(T) {
+
     class Page extends GraphQlQuery {
 
         static __isPage = true;
@@ -537,6 +550,15 @@ GraphQlQuery.all = function () {
             constructor(x) {
                 super(x);
                 this.items = [];
+
+                window.$socket.onEvent("ModelCreateEvent", (data) => {
+                  let modelName = data.payload.model_name;
+
+                  if (modelName.toLowerCase() == model.getModelName().toLowerCase()) {
+                    console.log("Update ALL view", model.getModelName());
+                    this.load();
+                  }
+                });
             }
 
             [Symbol.iterator]() {

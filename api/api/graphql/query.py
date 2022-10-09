@@ -3,6 +3,7 @@ import json
 from typing import List, TypeVar, Generic, get_args, Type
 
 from ariadne import QueryType, make_executable_schema, ObjectType
+from django.db.models import Q, Sum, Count
 
 from api.graphql.virtual import TableManager, VirtualTable, Table, computed, PaginatedTable, VirtualGenericTable
 from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite, \
@@ -173,10 +174,21 @@ class InGameTeamTable(Table[InGameTeam]):
     id: int
     name: str
     starts_as_ct: bool
+    is_ct: bool
 
-    @computed
+    @computed(paginate=True)
     def player_ids(self) -> List[int]:
-        return [p.id for p in self.players.all()]
+        return [p.player.id for p in self.sessions.all()]
+
+
+@tableManager.table
+class GamePlayerEventTable(Table[GamePlayerEvent]):
+    id: int
+    game_id: int
+    player_id: int
+    event: str
+    round_id: int
+    is_ct: bool
 
 
 @tableManager.table
@@ -239,31 +251,92 @@ class ManyToOne(PaginatedTable[int]):
 
 
 @tableManager.table
-class GameStatsView(VirtualTable):
+class PlayerPerformanceAggregatedView(VirtualTable):
+    """ Player stats optionally inside a game """
+    player_id: int
+    kills: int
+    deaths: int
+    assists: int
+    hs: float
 
-    events = []
-
-    def __init__(self, game_id: int = None, in_game_team_id: int = None, player_id: int = None, events: str = None):
-        self.game_id = game_id
-        self.in_game_team_id = in_game_team_id
+    def __init__(self, player_id: int = None, game_id: int = None):
         self.player_id = player_id
-        self.events = events.replace(" ", "").split(',') if events else []
+        self.game_id = game_id
+
+        print(f"get player performance for {player_id} in {game_id}")
 
         stats = GamePlayerEvent.objects.all()
 
-        if events:
-            stats = stats.filter(event__in=events)
+        if self.player_id:
+            stats = stats.filter(player_id=self.player_id)
 
-        if player_id:
-            stats = stats.filter(player_id=player_id)
+        if self.game_id:
+            stats = stats.filter(game_id=self.game_id)
 
-        if in_game_team_id:
-            team = InGameTeam.objects.get(id=in_game_team_id)
-            stats = stats.filter(game=team.game, player_id__in=team.sessions.values_list('player.id', flat=True))
+        for s in stats:
+            print(s.player, s.event)
 
-        if game_id:
-            stats = stats.filter(game_id=game_id)
+        aggregated_stats = stats.filter(player_id=player_id).aggregate(
+            kills=Count('id', filter=Q(event='KILL')),
+            deaths=Count('id', filter=Q(event='DEATH')),
+            assists=Count('id', filter=Q(event='ASSIST')),
+            hs=Count('id', filter=Q(meta__hs=True))
+        )
 
+        self.player_id = player_id
+        self.kills = aggregated_stats['kills']
+        self.deaths = aggregated_stats['deaths']
+        self.assists = aggregated_stats['assists']
+
+        headshots = aggregated_stats['hs']
+        self.hs = (headshots / self.kills) if headshots else 0
+        self.hs *= 100
+        self.hs = round(self.hs, 2)
+
+
+@tableManager.table
+class PlayerStatId(VirtualTable):
+    player_id: int
+    game_id: int
+
+    def __init__(self, player_id: int, game_id: int):
+        self.player_id = player_id
+        self.game_id = game_id
+
+
+@tableManager.table
+class GameStatsView(VirtualTable):
+
+    def __init__(self, game_id: int = None, in_game_team_id: int = None, player_id: int = None):
+        self.game_id = game_id
+        self.in_game_team_id = in_game_team_id
+        self.player_id = player_id
+
+    @computed(paginate=True)
+    def stats(self) -> List[PlayerStatId]:
+
+        stats = GamePlayerEvent.objects.all()
+
+        print(f"get stats")
+        if self.player_id:
+            print(f"with player: {self.player_id}")
+            stats = stats.filter(player_id=self.player_id)
+
+        if self.in_game_team_id:
+            print(f"with team: {self.in_game_team_id}")
+            team = InGameTeam.objects.get(id=self.in_game_team_id)
+            self.game_id = team.game.id
+            stats = stats.filter(game=team.game, player_id__in=team.sessions.values_list('player', flat=True))
+
+        if self.game_id:
+            print(f"with game: {self.game_id}")
+            stats = stats.filter(game_id=self.game_id)
+
+        # find all players with stats
+        players = stats.values_list('player_id', flat=True).distinct()
+        print(f"Players: {players}")
+
+        return [PlayerStatId(player, self.game_id) for player in players]
 
 
 type_defs = """

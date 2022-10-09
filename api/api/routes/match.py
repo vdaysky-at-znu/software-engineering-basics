@@ -1,12 +1,37 @@
+import datetime
+
 from fastapi import APIRouter
 
 from api.dependencies import PlayerAuthDependency, MatchDependency
-from api.models import Event, Player, Match, MapPick, MapPickProcess
+from api.models import Event, Player, Match, MapPick, MapPickProcess, Team
 from api.schemas.match import CreateMatch, PickMap
 from api.exceptions import PermissionError, BadRequestError
 from api.services.match import select_map, finish_mp
 
 router = APIRouter()
+
+
+@router.get("/testcreate")
+async def test_create():
+
+    # get random event
+    event = Event.objects.order_by("?").first()
+
+    # get random team
+    team_a = Team.objects.order_by("?").first()
+    team_b = Team.objects.order_by("?").first()
+
+    # create match
+    match = Match.objects.create(
+        event=event,
+        team_one=team_a,
+        team_two=team_b,
+        map_count=1,
+        start_date=datetime.datetime.now(),
+        name="test match",
+    )
+
+    return match
 
 
 @router.post('/create')

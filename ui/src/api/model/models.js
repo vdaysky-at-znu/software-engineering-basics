@@ -8,15 +8,17 @@ export class Game extends Model {
     static is_finished = Boolean;
     static score_a = Number;
     static score_b = Number;
+    static team_a = 'InGameTeam';
+    static team_b = 'InGameTeam';
+    static match = 'Match';
 }
 
 export class Team extends Model {
 
-    // players are added later to avoid circular dependency
-
     static short_name = String;
     static full_name = String;
     static elo = Number;
+    static members = Page('Player');
 
 }
 
@@ -97,8 +99,6 @@ export class Player extends Model {
     }
 }  
 
-Team.members = Page(Player);
-
 export class MapPick extends Model {
 
     static selected_by = Team;
@@ -126,6 +126,7 @@ export class MapPickProcess extends Model {
     // 1 = ban, 2 = pick, 3 = default, 0 = null
     static next_action = String;
     static finished = Boolean;
+    static match = 'Match';
 
 }
 
@@ -140,10 +141,6 @@ export class Match extends Model {
     static games = Page(Game);
 }
 
-Game.match = Match;
-
-MapPickProcess.match = Match;
-
 export class Event extends Model {
 
     static __modelname = "Event";
@@ -153,7 +150,29 @@ export class Event extends Model {
     static start_date = String;
 }
 
-const topLevelModels = [Game, Team, Player, MapPick, MapPickProcess, Match, Event];
+export class InGameTeam extends Model {
+    static __modelname = "InGameTeam";
+    static name = String;
+    static players = Page(Player);
+    static is_ct = Boolean;
+    static starts_as_ct = Boolean;
+}
+
+export class Round extends Model {
+    static game = Game;
+    static number = Number;
+    static winner = InGameTeam;
+}
+
+export class GamePlayerEvent extends Model {
+    static event = String;
+    static game = Game;
+    static player = Player;
+    static round = Round;
+    static is_ct = Boolean;
+}
+
+const topLevelModels = [Game, Team, Player, MapPick, MapPickProcess, Match, Event, GamePlayerEvent, InGameTeam];
 
 window.$registeredModels = {};
 
@@ -201,4 +220,22 @@ export class TopPlayersView extends Model {
     }
 
     static players = Page(Player);
+}
+
+export class PlayerPerformanceAggregatedView extends Model {
+    static __virtualId = {
+        player_id: Number,
+        game_id: Number,
+    }
+
+    static kills = Number;
+    static deaths = Number;
+    static assists = Number;
+    static hs = Number;
+    static player = Player;
+}
+
+export class GameStatsView extends Model {
+
+    static stats = Page(PlayerPerformanceAggregatedView);
 }

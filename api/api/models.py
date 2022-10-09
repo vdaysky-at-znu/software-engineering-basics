@@ -11,6 +11,7 @@ from django.core import serializers
 from django.db import models
 
 from django.contrib.auth.models import AbstractUser, Permission
+from django.db.models import Q
 
 from api.constants import LocationCode, GameMap
 
@@ -141,6 +142,10 @@ class InGameTeam(models.Model):
             player.elo = max(0, player.elo - elo)
             player.save()
 
+    @property
+    def game(self):
+        return Game.objects.get(Q(team_a=self) | Q(team_b=self))
+
     @classmethod
     def from_team(cls, team: Team, is_ct: bool):
         team_1 = InGameTeam.objects.create(
@@ -228,7 +233,7 @@ class Round(models.Model):
         have to rely on round number assuming half is 15 rounds.
     """
 
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="rounds")
     number = models.IntegerField()
     winner = models.ForeignKey(InGameTeam, null=True, on_delete=models.CASCADE)
 

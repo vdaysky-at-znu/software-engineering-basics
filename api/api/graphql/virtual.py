@@ -1,3 +1,4 @@
+import functools
 import inspect
 import random
 import sys
@@ -9,26 +10,77 @@ from typing import TypeVar, Generic, List, get_args
 from ariadne import ObjectType
 
 
-def computed(method):
-    sig = inspect.signature(method)
+def computed(method=None, *, paginate=False):
 
-    return_type = sig.return_annotation
-    param_sig = []
-    for name, param in sig.parameters.items():
-        if name == "self":
-            continue
-        param_sig.append({
-            "type": param.annotation,
-            "name": name,
-            "required": param.default == inspect.Parameter.empty
-        })
+    def register_computed_method(f):
+        sig = inspect.signature(f)
 
-    method._prop_meta = [
-        method.__name__,
-        method,
-        return_type,
-        param_sig
-    ]
+        return_type = sig.return_annotation
+        param_sig = []
+        for name, param in sig.parameters.items():
+            if name == "self":
+                continue
+            param_sig.append({
+                "type": param.annotation,
+                "name": name,
+                "required": param.default == inspect.Parameter.empty
+            })
+
+        f._prop_meta = [
+            f.__name__,
+            f,
+            return_type,
+            param_sig
+        ]
+
+    if not method:
+
+        if not paginate:
+            return computed
+
+        def real_decorator(method):
+            from api.graphql.query import Page
+
+            ret_type = inspect.signature(method).return_annotation
+            returned_type = ret_type.__args__[0]
+
+            sig = inspect.signature(method)
+
+            new_sig = inspect.Signature(
+                parameters=[
+                    *sig.parameters.values(),
+                    inspect.Parameter(
+                        name="page",
+                        kind=inspect.Parameter.KEYWORD_ONLY,
+                        default=0,
+                        annotation=int,
+                    ),
+                    inspect.Parameter(
+                        name="size",
+                        kind=inspect.Parameter.KEYWORD_ONLY,
+                        default=10,
+                        annotation=int,
+                    )
+                ],
+                return_annotation=Page[returned_type]
+            )
+
+            def paginated_prop(self, page: int = 0, size: int = 10, **kwargs) -> Page[returned_type]:
+                data = method(self, **kwargs)
+                if isinstance(data, list):
+                    return Page(len(data), data[page * size: (page + 1) * size])
+
+                return Page(data.count(), data.values_list('id', flat=True)[page * size:page * size + size])
+
+            paginated_prop.__signature__ = new_sig
+            paginated_prop.__name__ = method.__name__
+            register_computed_method(paginated_prop)
+
+            return paginated_prop
+
+        return real_decorator
+
+    register_computed_method(method)
 
     return method
 
@@ -123,7 +175,12 @@ class TableManager:
 
         def make_resolver(gql_obj, name, prop, args):
             dec = gql_obj.field(name)
-            dec(lambda obj, info, **kwargs: prop(obj, **kwargs))
+
+            def test(obj, **kwargs):
+                print(f"teset: {obj} {kwargs}")
+                return prop(obj, **kwargs)
+
+            dec(lambda obj, info, **kwargs: test(obj, **kwargs))
 
         for model in self.queryable:
             make_handler(model)
@@ -139,6 +196,7 @@ field_type_map = {
     bool: "Boolean",
     int: "Int",
     str: "String",
+    float: "Float",
 }
 
 
@@ -358,7 +416,7 @@ class VirtualTable(AbstractTable):
             return cls(**args)
         except Exception as e:
             traceback.print_exc()
-            raise ValueError(f"Could not init {cls} with {args}")
+            raise ValueError(f"Could not init {cls} with **{args}")
 
 
 class VirtualGenericTable(VirtualTable):
