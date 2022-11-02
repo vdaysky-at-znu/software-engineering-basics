@@ -103,6 +103,8 @@ export default {
 
         fftView: {
             handler: function (newVal) {
+                console.log("fftView changed",newVal,  newVal.players);
+
                 this.playerData = {};
                 for (let player of newVal.players) {
                     this.playerData[player.id] = {

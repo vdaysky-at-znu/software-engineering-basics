@@ -1,10 +1,27 @@
 <template>
   <v-container>
-        <v-row v-for="(event, i) in events" :key="i">
-            <v-col cols="12" sm="6" md="4" lg="3" xl="2" :key="i">
-                <event-widget :event="event"></event-widget>
-            </v-col>
-        </v-row>
+        <v-table>
+            <thead>
+                <tr>
+                    <th class="text-left">
+                        Event
+                    </th>
+                    <th class="text-right">
+                        Start Date
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="event in events" :key="event.id">
+                    <td>
+                        <event-widget :event="event"></event-widget>
+                    </td>
+                    <td class="text-end">
+                        {{ event.start_date }}
+                    </td>
+                </tr>
+            </tbody>
+        </v-table>
   </v-container>
 </template>
 

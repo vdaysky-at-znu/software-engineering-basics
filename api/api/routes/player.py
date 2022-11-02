@@ -1,10 +1,11 @@
 import asyncio
 import random
 import string
-from uuid import UUID
+import uuid
 
 from django.db.models import Q
 from fastapi import APIRouter
+from uuid import UUID
 
 from api.dependencies import PlayerDependency, PlayerAuthDependency, InviteDependency
 from api.exceptions import BadRequestError, PermissionError
@@ -13,6 +14,22 @@ from api.adapters.mojang import get_last_name
 from api.schemas.player import SendInviteData
 
 router = APIRouter()
+
+
+@router.get("/testcreate")
+async def test_create():
+
+    for _ in range(100):
+        name = ''.join(random.choices(string.ascii_lowercase, k=10))
+        uid = uuid.uuid4()
+
+        player = Player.objects.create_user(
+            username=name,
+            uuid=uid,
+            password="1",
+            role=Role.objects.get(name="default")
+        )
+        print(player)
 
 
 @router.get("/t-update/{player}")

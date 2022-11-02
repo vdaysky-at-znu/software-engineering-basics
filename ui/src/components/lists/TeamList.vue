@@ -1,10 +1,33 @@
 <template>
   <v-container>
-      <v-row v-for="(team, i) in teams" :key="i">
-            <v-col cols="12" sm="6" md="4" lg="3" xl="2" :key="i">
-                <team-widget :team="team"></team-widget>
-            </v-col>
-      </v-row>
+    <v-table>
+        <thead>
+            <tr>
+                <th>
+                    #
+                </th>
+                <th>
+                    Team
+                </th>
+                <th>
+                    Elo
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr v-for="(team, i) in teams" :key="team">
+                <td width="8%">
+                    {{ i + 1 }}.
+                </td>
+                <td>
+                    <team-widget :team="team"></team-widget>
+                </td>
+                <td>
+                    {{ team.elo }}
+                </td>
+            </tr>
+        </tbody>
+    </v-table>
   </v-container>
 </template>
 

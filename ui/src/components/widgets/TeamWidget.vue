@@ -1,7 +1,11 @@
 <template>
-  <v-row>
-      {{ team.short_name }}
-  </v-row>
+  <div>
+
+    <router-link :to="{name: 'team', params: {team: team.id} }">
+        {{ team.short_name }}
+    </router-link>
+      
+  </div>
 </template>
 
 <script>
@@ -10,6 +14,6 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 
 </style>

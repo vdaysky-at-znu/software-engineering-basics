@@ -1,15 +1,197 @@
+import inspect
 import json
-from typing import List
+from typing import List, TypeVar, Generic, get_args, Type
 
 from ariadne import QueryType, make_executable_schema, ObjectType
+from django.db.models import Q, Sum, Count
 
-from api.graphql.virtual import VirtualTableManager, VirtualTable
-from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite
+from api.graphql.virtual import TableManager, VirtualTable, Table, computed, PaginatedTable, VirtualGenericTable
+from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite, \
+    MapPickProcess, MapPick, GamePlayerEvent
 
-virtualTableManger = VirtualTableManager()
+tableManager = TableManager()
+
+T = TypeVar('T')
 
 
-@virtualTableManger.table(queryable=True)
+@tableManager.type
+class Page(Generic[T], VirtualGenericTable):
+    count: int
+    items: List[T]
+
+    def __init__(self, count: int, items: List[T]):
+        self.count = count
+        self.items = items
+
+
+@tableManager.table
+class EventTable(Table[Event]):
+    id: int
+    name: str
+    start_date: str
+
+    @computed
+    def match_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+        return Page(self.matches.count(), self.matches.values_list('id', flat=True)[page * count:page * count + count])
+
+
+@tableManager.table
+class PlayerTable(Table[Player]):
+    id: int
+    username: str
+    uuid: str
+    elo: int
+    role_id: int
+    team_id: int
+    owned_team_id: int
+
+
+@tableManager.table
+class RoleTable(Table[Role]):
+    id: int
+    name: str
+
+    tab_prefix: str
+    tab_color: str
+    chat_prefix: str
+    chat_suffix: str
+    chat_color: str
+    chat_message_color: str
+    team_override_color: bool
+
+    @computed
+    def permission_ids(self, page: int = 0, size: int = 10) -> Page[int]:
+        return Page(self.permissions.count(), self.permissions.values_list('id', flat=True)[page * size:page * size + size])
+
+
+@tableManager.table
+class PermissionTable(Table[PlayerPermission]):
+    id: int
+    name: str
+
+
+@tableManager.table
+class TeamTable(Table[Team]):
+    id: int
+    elo: int
+    owner_id: int
+
+    short_name: str
+    full_name: str
+    location_code: str
+
+    @computed
+    def member_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+        _all = Player.objects.filter(team_id=self.id)
+        return Page(_all.count(), [player.id for player in _all[page * count:page * count + count]])
+
+
+@tableManager.table
+class MatchTable(Table[Match]):
+    id: int
+    event_id: int
+    team_one_id: int
+    team_two_id: int
+    name: str
+    start_date: str
+    map_count: int
+    map_pick_process_id: int
+
+    @computed
+    def game_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+        _all = Game.objects.filter(match_id=self.id)
+        return Page(_all.count(), [game.id for game in _all[page * count:page * count + count]])
+
+
+@tableManager.table(queryable=False)
+class Config(VirtualTable):
+    overrides: str
+
+    def __init__(self, game_id: int):
+        self.overrides = json.dumps({
+            "something": 1
+        })
+
+
+@tableManager.table
+class GameTable(Table[Game]):
+    id: int
+    map: str
+    is_finished: bool
+    is_started: bool
+    match_id: int
+    team_a_id: int
+    team_b_id: int
+    config: Config
+    plugins: List[str]
+    score_a: int
+    score_b: int
+
+    @computed
+    def session_ids(self) -> List[int]:
+        return [s.id for s in self.sessions.all()]
+
+    @computed
+    def blacklist(self) -> List[int]:
+        return []
+
+
+@tableManager.table
+class PlayerSessionTable(Table[PlayerSession]):
+    id: int
+    player_id: int
+    game_id: int
+    roster_id: int
+
+
+@tableManager.table
+class MapPickProcessTable(Table[MapPickProcess]):
+    id: int
+    finished: bool
+    next_action: int
+    turn_id: int
+
+    @computed
+    def match_id(self) -> int:
+        return self.match.id
+
+    @computed
+    def map_ids(self, page: int = 0, size: int = 10) -> Page[int]:
+        return Page(self.maps.count(), self.maps.values_list('id', flat=True)[page * size:page * size + size])
+
+
+@tableManager.table
+class MapPickTable(Table[MapPick]):
+    id: int
+    map_name: str
+    selected_by_id: int
+    picked: bool
+    process_id: int
+
+
+@tableManager.table
+class InGameTeamTable(Table[InGameTeam]):
+    id: int
+    name: str
+    starts_as_ct: bool
+    is_ct: bool
+
+    @computed(paginate=True)
+    def player_ids(self) -> List[int]:
+        return [p.player.id for p in self.sessions.all()]
+
+
+@tableManager.table
+class GamePlayerEventTable(Table[GamePlayerEvent]):
+    id: int
+    game_id: int
+    player_id: int
+    event: str
+    round_id: int
+    is_ct: bool
+
+
+@tableManager.table
 class FftPlayer(VirtualTable):
     id: int
     uuid: str
@@ -27,7 +209,7 @@ class FftPlayer(VirtualTable):
         self.invited = Invite.objects.filter(player=player, team=team).exists()
 
 
-@virtualTableManger.table
+@tableManager.table
 class FftPlayerId(VirtualTable):
     player_id: int
     team_id: int
@@ -37,15 +219,124 @@ class FftPlayerId(VirtualTable):
         self.team_id = team_id
 
 
-@virtualTableManger.table
+@tableManager.table
 class FftPlayerView(VirtualTable):
-    player_ids: List[FftPlayerId]
+
+    @computed
+    def player_ids(self, page: int = 0, size: int = 10) -> Page[FftPlayerId]:
+        _all = Player.objects.filter(team=None)
+        return Page(
+            _all.count(),
+            [FftPlayerId(player.id, self.team_id) for player in _all[page * size:page * size + size]]
+        )
 
     def __init__(self, team_id: int):
-        self.player_ids = [
-            FftPlayerId(player_id=player.id, team_id=team_id)
-            for player in Player.objects.filter(team=None)
-        ]
+        self.team_id = team_id
+
+
+@tableManager.table
+class ManyToOne(PaginatedTable[int]):
+
+    def __init__(self, model: str, page: int, size: int, id: int = None, field: str = None):
+        from django.apps import apps
+
+        if id is None and field is None:
+            model = apps.get_model('api', model).objects.all()
+            ids = [m.id for m in model]
+        else:
+            model = apps.get_model('api', model).objects.get(id=id)
+            ids = [getattr(obj, 'id') for obj in getattr(model, field).all()]
+
+        super().__init__(ids, page, size)
+
+
+@tableManager.table
+class PlayerPerformanceAggregatedView(VirtualTable):
+    """ Player stats optionally inside a game """
+    player_id: int
+    kills: int
+    deaths: int
+    assists: int
+    hs: float
+
+    def __init__(self, player_id: int = None, game_id: int = None):
+        self.player_id = player_id
+        self.game_id = game_id
+
+        print(f"get player performance for {player_id} in {game_id}")
+
+        stats = GamePlayerEvent.objects.all()
+
+        if self.player_id:
+            stats = stats.filter(player_id=self.player_id)
+
+        if self.game_id:
+            stats = stats.filter(game_id=self.game_id)
+
+        for s in stats:
+            print(s.player, s.event)
+
+        aggregated_stats = stats.filter(player_id=player_id).aggregate(
+            kills=Count('id', filter=Q(event='KILL')),
+            deaths=Count('id', filter=Q(event='DEATH')),
+            assists=Count('id', filter=Q(event='ASSIST')),
+            hs=Count('id', filter=Q(meta__hs=True))
+        )
+
+        self.player_id = player_id
+        self.kills = aggregated_stats['kills']
+        self.deaths = aggregated_stats['deaths']
+        self.assists = aggregated_stats['assists']
+
+        headshots = aggregated_stats['hs']
+        self.hs = (headshots / self.kills) if headshots else 0
+        self.hs *= 100
+        self.hs = round(self.hs, 2)
+
+
+@tableManager.table
+class PlayerStatId(VirtualTable):
+    player_id: int
+    game_id: int
+
+    def __init__(self, player_id: int, game_id: int):
+        self.player_id = player_id
+        self.game_id = game_id
+
+
+@tableManager.table
+class GameStatsView(VirtualTable):
+
+    def __init__(self, game_id: int = None, in_game_team_id: int = None, player_id: int = None):
+        self.game_id = game_id
+        self.in_game_team_id = in_game_team_id
+        self.player_id = player_id
+
+    @computed(paginate=True)
+    def stats(self) -> List[PlayerStatId]:
+
+        stats = GamePlayerEvent.objects.all()
+
+        print(f"get stats")
+        if self.player_id:
+            print(f"with player: {self.player_id}")
+            stats = stats.filter(player_id=self.player_id)
+
+        if self.in_game_team_id:
+            print(f"with team: {self.in_game_team_id}")
+            team = InGameTeam.objects.get(id=self.in_game_team_id)
+            self.game_id = team.game.id
+            stats = stats.filter(game=team.game, player_id__in=team.sessions.values_list('player', flat=True))
+
+        if self.game_id:
+            print(f"with game: {self.game_id}")
+            stats = stats.filter(game_id=self.game_id)
+
+        # find all players with stats
+        players = stats.values_list('player_id', flat=True).distinct()
+        print(f"Players: {players}")
+
+        return [PlayerStatId(player, self.game_id) for player in players]
 
 
 type_defs = """
@@ -56,15 +347,8 @@ type_defs = """
         game_ids: [Int],
         match_ids: [Int],
         
-        player(id: Int): Player
-        team(id: Int!): Team
-        role(id: Int!): Role
-        permission(id: Int): Permission
         server(id: Int): Server
-        game(id: Int): Game
-        inGameTeam(id: Int): InGameTeam
-        playerSession(id: Int): PlayerSession
-        """ + virtualTableManger.get_graphql_requests() + """
+""" + tableManager.get_graphql_requests() + """
     }
     
     type Server {
@@ -73,138 +357,15 @@ type_defs = """
         id: Int
     }
     
-    """ + virtualTableManger.get_graphql_responses() + """
-    
-    type Game {
-        id: Int
-        map: String
-        finished: Boolean
-        started: Boolean
-        match: Match
-        team_a: InGameTeam
-        team_b: InGameTeam
-        team_a_id: Int
-        team_b_id: Int
-        session_ids: [Int]
-        config: Config
-        blacklist: [Int]
-        plugins: [String] 
-    }
-    
-    type PlayerSession {
-        id: Int
-        player_id: Int
-        game_id: Int
-        roster_id: Int
-    }
-    
-    type Config {
-        overrides: String
-    }
-    
-    type Match {
-        id: Int
-        team_one: Team
-        team_one_id: Int
-        team_two: Team
-        team_two_id: Int
-        name: String
-        start_date: String
-        actual_start_date: String
-        actual_end_date: String
-        event: Event
-        map_count: Int
-        map_pick_process: MapPickProcess
-        map_pick_process_id: Int
-    }
-    
-    type MapPickProcess { 
-        id: Int
-        finished: Boolean
-        next_action: Int
-        turn: Team
-        maps: [MapPick]
-        map_ids: [Int]
-    }
-    
-    type MapPick {
-        id: Int
-        map_name: String
-        selected_by: Team
-        picked: Boolean
-        process: MapPickProcess
-        process_id: Int
-    }
-    
-    type Event {
-        id: Int
-        name: String
-        start_date: String
-        matches: [Match]
-        match_ids: [Int]
-    }
-    
-    type InGameTeam {
-        id: Int
-        name: String
-        starts_as_ct: Boolean
-        players: [Player]
-        player_ids: [Int]
-    }
-    
-    type Hub {
-        id: Int
-        world: String
-        players: [Player]
-        player_ids: [Int]
-    }
-
-    type Player {
-        id: Int!
-        uuid: String!
-        username: String!
-        elo: Int!
-        role_id: Int!
-        role: Role
-        team: Team
-        team_id: Int 
-        owned_team_id: Int
-    }
-    
-    type Role {
-        id: Int!
-        name: String!
-        tab_prefix: String!
-        tab_color: String!
-        chat_prefix: String!
-        chat_suffix: String!
-        chat_color: String!
-        chat_message_color: String!
-        team_override_color: Boolean!
-        
-        permission_ids: [Int]
-        permissions: [Permission]
-    }
-    
-    type Permission {
-        id: Int!
-        name: String!
-    }
-    
-    type Team {
-        id: Int
-        short_name: String
-        full_name: String
-        location_code: String
-        members: [Player]
-        member_ids: [Int]
-    }
+""" + tableManager.get_graphql_responses() + """
     
 """
 
 query = QueryType()
 
-virtualTableManger.define_resolvers(query)
+print(type_defs)
+
+tableManager.define_resolvers(query)
 
 
 @query.field("player")
@@ -217,6 +378,11 @@ def resolve_player(_, info, id):
         player.owned_team_id = None
 
     return player
+
+
+@query.field("event")
+def resolve_event(_, info, id):
+    return Event.objects.get(id=id)
 
 
 @query.field("player_ids")
@@ -244,53 +410,12 @@ def resolve_match(_, info):
     return [x.id for x in Match.objects.all()]
 
 
-@query.field("team")
-def resolve_team(_, info, id):
-    return Team.objects.get(id=id)
-
-
-@query.field("game")
-def resolve_team(_, info, id):
-    return Game.objects.get(id=id)
-
-
 @query.field("server")
 def resolve_team(_, info, id):
     return {}
 
 
-@query.field("role")
-def resolve_role(_, info, id):
-    return Role.objects.get(id=id)
-
-
-@query.field("inGameTeam")
-def resolve_role(_, info, id):
-    return InGameTeam.objects.get(id=id)
-
-
-@query.field("permission")
-def resolve_permission(_, info, id):
-    return PlayerPermission.objects.get(id=id)
-
-
-@query.field("playerSession")
-def resolve_session(_, info, id):
-    return PlayerSession.objects.get(id=id)
-
-
-player = ObjectType("Player")
 server = ObjectType("Server")
-role = ObjectType("Role")
-permission = ObjectType("Permission")
-team = ObjectType("Team")
-in_game_team = ObjectType("InGameTeam")
-match = ObjectType("Match")
-game = ObjectType("Game")
-event = ObjectType("Event")
-map_pick = ObjectType("MapPick")
-map_pick_process = ObjectType("MapPickProcess")
-player_session = ObjectType("PlayerSession")
 
 
 @server.field("id")
@@ -308,63 +433,7 @@ def resolve_lobbies_ids(obj, info):
     return [x.id for x in Game.objects.filter(finished=False)]
 
 
-@game.field("config")
-def resolve_game_config_overrides(obj, info):
-
-    config = json.dumps({
-        "randomthing": 1
-    })
-
-    return {
-        "overrides": config
-    }
-
-
-@game.field("blacklist")
-def resolve_game_blacklist(obj, info):
-    return []
-
-
-@game.field("session_ids")
-def resolve_session_ids(obj, info):
-    return [x.id for x in obj.sessions.all()]
-
-
-@role.field("permission_ids")
-def resolve_permission_ids(obj, info):
-    return [x.id for x in obj.permissions.all()]
-
-
-@role.field("permissions")
-def resolve_permission_ids(obj, info):
-    return obj.permissions.all()
-
-
-@team.field("members")
-def resolve_team_members(obj, *x):
-    return obj.players.all()
-
-
-@team.field("member_ids")
-def resolve_team_member_ids(obj, *x):
-    return [x.id for x in obj.players.all()]
-
-
-@in_game_team.field("players")
-def resolve_ig_team_players(obj, *x):
-    return [x.player for x in obj.sessions.all()]
-
-
-@in_game_team.field("player_ids")
-def resolve_ig_team_players(obj, *x):
-    return [x.player.id for x in obj.sessions.all()]
-
-
 # Create executable schema instance
 schema = make_executable_schema(
-    type_defs,
-    query, player, role, team,
-    map_pick, map_pick_process,
-    event, match, in_game_team,
-    game, server, player_session
+    type_defs, query, server, *tableManager.get_gql_objects()
 )

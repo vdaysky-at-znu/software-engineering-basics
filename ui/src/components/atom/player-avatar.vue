@@ -1,10 +1,21 @@
 <template>
-  <v-img max-height="32px" max-width="32px" min-height="32px" min-width="32px" v-if="player.uuid" :src="`https://crafatar.com/avatars/${player.uuid}`"></v-img> 
+  <v-img 
+    :max-height="dense ? '24px' : '32px'" 
+    :max-width="dense ? '24px' : '32px'" 
+    :min-height="dense ? '24px' : '32px'" 
+    :min-width="dense ? '24px' : '32px'" 
+    style="{'padding': '0px'}"
+    v-if="player.uuid" 
+    :src="`https://crafatar.com/avatars/${player.uuid}`">
+  </v-img> 
 </template>
 
 <script>
 export default {
-    props: ['player']
+    props: {
+      'player': null, 
+      'dense': Boolean
+    },
 }
 </script>
 

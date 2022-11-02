@@ -43,7 +43,16 @@ class ApiBase {
         return content;
     }
 
-    async graphql(model, id, fields) {
+    async graphql(model, id, fields, fieldIds) {
+        /** Make a GraphQL query to the API
+         * model - string name of model to query
+         * id - id of model to query, could be complex ID represented by object, or null
+         * fields - array of field names to query
+         * fieldIds - array of parameters to query for each field, could be undefined
+         */
+
+         fieldIds = fieldIds || {};
+
         let query;
 
         const isView = typeof id === "object";
@@ -51,21 +60,41 @@ class ApiBase {
         // lowercase first letter
         let normalizedModelName = model[0].toLowerCase() + model.slice(1);
         
+        const argKVPair = (key, value) => {
+            if (typeof value === "string") {
+                return `${key}: "${value}"`;
+            } else if (typeof value === "number") {
+                return `${key}: ${value}`;
+            } else if (value === null) {
+                return `${key}: null`;
+            }
+            return `${key}: ${value}`;
+        }
+
+        let queryFields = fields.map(fieldName => {
+            let fieldArgs = fieldIds[fieldName];
+            
+            // if given field name has own args, process them. Otherwise, just return the name
+            if (fieldArgs) {
+                return Object.keys(fieldArgs).map(fieldArgName => argKVPair(fieldArgName, fieldArgs[fieldArgName])).join(", ");
+            } else {
+                return fieldName;
+            }
+        }).join(" ");
+
         if (isView) { // views may have miltiple ids
             let queryId = Object.keys(id).map(k => `${k}: ${typeof id[k] === 'string' ? '"' + id[k] + '"' : id[k] }`).join(", ");
 
-            query = `query {
-                ${normalizedModelName}(${queryId}) {
-                    ${fields.join(" ")}
-                }
-            }`;
+            query = `query { ${normalizedModelName}(${queryId}) { ${queryFields} } }`;
             console.log(query);
         }
         else if (id && fields) {
-            query = `query { ${normalizedModelName}(id: ${id}) { ${fields.join(", ")} } }`;
+            query = `query { ${normalizedModelName}(id: ${id}) { ${queryFields} } }`;
         } else {
             query = `query { ${normalizedModelName} }`; // request to get all entries
         }
+
+        console.log(query);
 
         let response = await fetch(BASSE_URL + '/graphql/', {
             method: 'post', 
@@ -128,8 +157,8 @@ class MsApi extends ApiBase {
         return await this.post("match/create", {name, start_date, event, team_a, team_b, map_count});
     }
 
-    async mapPickAction({is_picked, map}) {
-        return await this.post("match/map-pick", {is_picked, map});
+    async mapPickAction(map) {
+        return await this.post("match/map-pick", {map: map.id});
     }
 
     async getFFTPlayers() {

@@ -2,8 +2,10 @@
   <v-dialog v-model="dialog">
 
     <template v-slot:activator="{ props }">
-          <v-btn v-bind="props" flat> {{ button }} </v-btn>
-        </template>
+      <slot name="button">
+          <v-btn v-bind="{...props, ...$attrs}" flat> {{ button }} </v-btn>
+      </slot>
+    </template>
 
     <v-card style="width: min(90vw, 800px)">
 
@@ -16,8 +18,10 @@
       </v-card-content>
 
       <v-card-actions>
-        <v-btn @click="dialog = false"> Cancel </v-btn>
-        <v-btn > submit </v-btn>
+        <slot name="actions">
+          <v-btn @click="dialog = false"> Cancel </v-btn>
+          <v-btn @click="$emit('submit')" > submit </v-btn>
+        </slot>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -26,11 +30,20 @@
 <script>
 export default {
 
+  inheritAttrs: false,
   props: ['button', 'title'],
 
   data: () => ({
     dialog: false,
   }),
+  watch: {
+
+  },
+  methods: {
+    close() {
+      this.dialog = false
+    }
+  }
 };
 </script>
 

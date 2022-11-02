@@ -1,23 +1,30 @@
-import Model from './model.js';
+import Model, { Page } from './model.js';
 // import VirtualModel from './virtual.js';
 
 
 export class Game extends Model {
-
+    static map = String;
+    static is_started = Boolean;
+    static is_finished = Boolean;
+    static score_a = Number;
+    static score_b = Number;
+    static team_a = 'InGameTeam';
+    static team_b = 'InGameTeam';
+    static match = 'Match';
 }
 
 export class Team extends Model {
 
-    // players are added later to avoid circular dependency
-
     static short_name = String;
     static full_name = String;
+    static elo = Number;
+    static members = Page('Player');
 
 }
 
 export class Permission extends Model {
 
-    static __modelname = "Permission";
+    static __modelname = "PlayerPermission";
 
     static name = String;
 }
@@ -27,7 +34,7 @@ export class Role extends Model {
     static __modelname = "Role";
 
     static name = String;
-    static permissions = [Permission]
+    static permissions = Page(Permission)
 
 }
 
@@ -38,9 +45,18 @@ export class Player extends Model {
     static role = Role;
     static owned_team = Team;
     static username = String;
+    static elo = Number;
 
-    isInTeam() {
-        return this.team != null;
+    isAuthenticated() {
+        return this.uuid != null;
+    }
+
+    isInTeam(team) {
+        if (this.team == null) return false;
+        if (team) {
+            return this.team.id == team.id;
+        }
+        return true;
     }
 
     hasPermission(permission) {
@@ -67,7 +83,7 @@ export class Player extends Model {
                 
 
                 if (present[i] != required[i]) {
-                    return present[i] != "*";
+                    return present[i] == "*";
                 }
             }
             return true;
@@ -83,54 +99,94 @@ export class Player extends Model {
     }
 }  
 
-Team.members = [Player];
-
 export class MapPick extends Model {
 
     static selected_by = Team;
+    static map_name = String;
+    static picked = Boolean;
 
-    get is_selected() {
+
+    isSelected() {
         return this.selected_by != null;
     }
 
-    get is_banned() {
-        return this.is_selected && !this.picked
+    isBanned() {
+       return this.isSelected() && !this.picked
     }
 
-    get is_picked() {
-        return this.is_selected && this.picked
+    isPicked() {
+        return this.isSelected() && this.picked
     }
 }
 
 export class MapPickProcess extends Model {
 
-    maps = [MapPick];
+    static maps = Page(MapPick);
+    static turn = Team;
+    // 1 = ban, 2 = pick, 3 = default, 0 = null
+    static next_action = String;
+    static finished = Boolean;
+    static match = 'Match';
 
 }
 
 export class Match extends Model {
 
+    static __modelname = "Match";
+
+    static name = String;
     static team_one = Team;
     static team_two = Team;
     static map_pick_process = MapPickProcess;
+    static games = Page(Game);
 }
 
 export class Event extends Model {
 
-    static matches = [Match];
+    static __modelname = "Event";
+
+    static matches = Page(Match);
+    static name = String;
+    static start_date = String;
 }
 
-const topLevelModels = [Game, Team, Player, MapPick, MapPickProcess, Match, Event];
+export class InGameTeam extends Model {
+    static __modelname = "InGameTeam";
+    static name = String;
+    static players = Page(Player);
+    static is_ct = Boolean;
+    static starts_as_ct = Boolean;
+}
+
+export class Round extends Model {
+    static game = Game;
+    static number = Number;
+    static winner = InGameTeam;
+}
+
+export class GamePlayerEvent extends Model {
+    static event = String;
+    static game = Game;
+    static player = Player;
+    static round = Round;
+    static is_ct = Boolean;
+}
+
+const topLevelModels = [Game, Team, Player, MapPick, MapPickProcess, Match, Event, GamePlayerEvent, InGameTeam];
 
 window.$registeredModels = {};
 
 for (let model of topLevelModels) {
     model.all = Model.all.bind(model);
-    window.$registeredModels[model.name.toLowerCase()] = model;
+    let modelName = model.__modelname || model.name;
+    window.$registeredModels[modelName.toLowerCase()] = model;
 }
 
 export class AnonymousPlayer {
     hasPermission() {
+        return false;
+    }
+    isAuthenticated() {
         return false;
     }
 
@@ -155,7 +211,31 @@ export class FftPlayer extends Model {
 }
 
 export class FftPlayerView extends Model {
-    static players = [FftPlayer];
+    static players = Page(FftPlayer);
 }
 
+export class TopPlayersView extends Model {
+    static __virtualId = {
+        criteria: String
+    }
 
+    static players = Page(Player);
+}
+
+export class PlayerPerformanceAggregatedView extends Model {
+    static __virtualId = {
+        player_id: Number,
+        game_id: Number,
+    }
+
+    static kills = Number;
+    static deaths = Number;
+    static assists = Number;
+    static hs = Number;
+    static player = Player;
+}
+
+export class GameStatsView extends Model {
+
+    static stats = Page(PlayerPerformanceAggregatedView);
+}

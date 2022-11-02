@@ -17,6 +17,31 @@ router = APIRouter()
 # def get_roster(roster: Team = RosterDependency()):
 #     return roster
 
+
+@router.get("/testcreate")
+async def test_create():
+
+    # players without team
+    players = Player.objects.filter(team=None)
+
+    if players.count() < 10:
+        return
+
+    # create team
+    random_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    random_short_name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
+    team = Team.objects.create(
+        short_name=random_short_name,
+        full_name=random_name,
+        owner=players.first()
+    )
+
+    # add players to team
+    for player in players[1:6]:
+        player.team = team
+        player.save()
+
+
 @router.get("/t-create")
 async def test_events():
     # create a team with randomly generated name

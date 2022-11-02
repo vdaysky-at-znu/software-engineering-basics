@@ -1,23 +1,20 @@
 <template>
-  <v-container>
-      <team-widget :team="team"></team-widget>
-  </v-container>
+  <team-sub-view :team="team"></team-sub-view>
 </template>
 
 <script>
-import TeamWidget from "@/components/widgets/TeamWidget.vue"
-import { Team } from '@/api/model/models'
+import { Team } from "@/api/model/models";
+import TeamSubView from "@/components/subview/TeamSubView.vue";
 
 export default {
-    components: { TeamWidget },
-    data() {
-        return {
-            team: new Team(this.$route.params.team),
-        }
-    },
-}
+  components: { TeamSubView },
+  data() {
+    return {
+      team: new Team(this.$route.params.team),
+    };
+  },
+};
 </script>
 
 <style>
-
 </style>

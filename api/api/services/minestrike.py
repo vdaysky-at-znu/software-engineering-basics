@@ -24,7 +24,7 @@ class MineStrike:
 
         await self.get_conn().send_event(evt)
 
-    async def model_update(self, model, pk=None):
+    async def model_upedate(self, model, pk=None):
 
         if isinstance(model, str):
             model_name = model
@@ -41,6 +41,7 @@ class MineStrike:
                 "model_pk": model_pk,
             }
         )
+
         await self.safe_send_event(evt)
 
     async def update_server(self):

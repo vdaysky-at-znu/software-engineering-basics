@@ -21,28 +21,39 @@
             <span>{{ player.username }}</span>
           </v-card-title>
           <v-card-content>
-            <div class="d-flex justify-center mb-4">
+            <div class="d-flex justify-center mb-4 py-3" style="background: #e7e7e7; box-shadow: #e7e7e7 0px 0px 7px 2px;">
               <img v-if="player.uuid" :src="`https://crafatar.com/renders/body/${player.uuid}`">
             </div>
             
-            <h3>Owned Team {{ player?.owned_team?.full_name }}</h3>
+            <v-divider class="my-4"></v-divider>
             
-            <invite-player-modal 
-              class="mb-4"
-              :style="{
-                color: $vuetify.theme.themes.light.colors['on-primary'],
-                background: $vuetify.theme.themes.light.colors.primary
-              }" 
-              block 
-              @selected="e => sendInvite(e.player)"
-            >
-              Invite Players
-            </invite-player-modal>
+            <div v-if="player.owned_team" class="text-center">
+              <span> Team Owner </span>
+              <team-widget :team="player.owned_team"></team-widget>
 
-            <div v-if="player.isInTeam()">
-              <h3>Member of</h3>
-              <p>{{ player.team.short_name }}</p>
+              <invite-player-modal 
+                class="my-4"
+                :style="{
+                  color: $vuetify.theme.themes.light.colors['on-primary'],
+                  background: $vuetify.theme.themes.light.colors.primary
+                }" 
+                block 
+                @selected="e => sendInvite(e.player)"
+              >
+                Invite Players
+              </invite-player-modal>
+
+              <v-divider class="my-4"></v-divider>
+
             </div>
+
+            <div class="d-flex" v-if="player.isInTeam()">
+              <h3 class="me-3">Member of</h3>
+              <team-widget :team="player.team"></team-widget>
+            </div>
+
+            <v-btn block color="error">Log Out</v-btn>
+
             
           </v-card-content>
            
@@ -55,8 +66,9 @@
 <script>
 import { Player } from '@/api/model/models'
 import InvitePlayerModal from '@/components/modal/InvitePlayerModal.vue'
+import TeamWidget from '@/components/widgets/TeamWidget.vue'
 export default {
-   components: { InvitePlayerModal },
+   components: { InvitePlayerModal, TeamWidget },
 
     data () {
         return {

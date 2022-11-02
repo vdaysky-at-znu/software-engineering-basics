@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import random
 from datetime import datetime
@@ -10,8 +11,9 @@ from django.core import serializers
 from django.db import models
 
 from django.contrib.auth.models import AbstractUser, Permission
+from django.db.models import Q
 
-from api.constants import LocationCode
+from api.constants import LocationCode, GameMap
 
 
 class Team(models.Model):
@@ -30,14 +32,10 @@ class Player(AbstractUser):
 
     class UserManager(BaseUserManager):
 
-        def create_user(self, username, uuid, password):
+        def create_user(self, username, uuid, password, role):
 
-            user = Player.objects.create(uuid=uuid, username=username)
+            user = Player.objects.create(uuid=uuid, username=username, role=role)
             user.set_password(password)
-
-            # default perms
-            perm = Permission.objects.get(codename="can_create_teams")
-            user.user_permissions.add(perm)
 
             user.save()
             return user
@@ -59,6 +57,9 @@ class Player(AbstractUser):
     elo = models.IntegerField(default=0)
     location_code = models.CharField(default=LocationCode.NONE, max_length=20)
     verified_at = models.DateTimeField(null=True, default=None)
+
+    def has_perm(self, perm, obj=None):
+        return self.role is not None and self.role.has_perm(perm)
 
     @property
     def permissions(self):
@@ -141,6 +142,20 @@ class InGameTeam(models.Model):
             player.elo = max(0, player.elo - elo)
             player.save()
 
+    @property
+    def game(self):
+        return Game.objects.get(Q(team_a=self) | Q(team_b=self))
+
+    @classmethod
+    def from_team(cls, team: Team, is_ct: bool):
+        team_1 = InGameTeam.objects.create(
+            name=team.short_name,
+            starts_as_ct=is_ct,
+            is_ct=is_ct
+        )
+
+        return team_1
+
 
 class Game(models.Model):
 
@@ -174,6 +189,10 @@ class Game(models.Model):
     # Plugins
     plugins = models.JSONField(default=list)
 
+    # Whitelist
+    whitelist = models.ManyToManyField(Player, related_name="whitelisted_games")
+    blacklist = models.ManyToManyField(Player, related_name="blacklisted_games")
+
     @property
     def is_started(self):
         return self.status == self.Status.STARTED
@@ -197,6 +216,14 @@ class Game(models.Model):
     def has_plugin(self, plugin):
         return self.plugins and plugin in self.plugins
 
+    @property
+    def score_a(self):
+        return Round.objects.filter(game=self, winner=self.team_a).count()
+
+    @property
+    def score_b(self):
+        return Round.objects.filter(game=self, winner=self.team_b).count()
+
 
 class Round(models.Model):
     """
@@ -206,7 +233,7 @@ class Round(models.Model):
         have to rely on round number assuming half is 15 rounds.
     """
 
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="rounds")
     number = models.IntegerField()
     winner = models.ForeignKey(InGameTeam, null=True, on_delete=models.CASCADE)
 
@@ -227,6 +254,13 @@ class GamePlayerEvent(models.Model):
         death, bomb plant, defuse or anything else.
         This table can be used in many ways to analyze player activity
     """
+
+    class Type:
+        KILL = "KILL"
+        DEATH = "DEATH"
+        ASSIST = "ASSIST"
+        BOMB_PLANT = "BOMB_PLANT"
+        BOMB_DEFUSE = "BOMB_DEFUSE"
 
     # Event name
     event = models.CharField(max_length=255)
@@ -252,17 +286,22 @@ class GamePlayerEvent(models.Model):
 
 class MapPickProcessManager(models.Manager):
 
-    def create(self, turn):
+    def create(self):
         map_pick_process = MapPickProcess()
         map_pick_process.save()
 
-        for map in ('Mirage', 'Inferno', 'Train', 'Dust II', 'Overpass', 'Nuke', 'Cache'):
-            MapPick.objects.create(process=map_pick_process, map_name=map)
+        for map in GameMap:
+            MapPick.objects.create(process=map_pick_process, map=map)
 
         return map_pick_process
 
 
 class MapPickProcess(models.Model):
+
+    class Action:
+        PICK = 2
+        BAN = 1
+        NULL = 0
 
     finished = models.BooleanField(default=False)
 
@@ -270,7 +309,7 @@ class MapPickProcess(models.Model):
     next_action = models.IntegerField(default=1)
 
     # team that has to make a decision
-    turn = models.ForeignKey(Team, on_delete=models.CASCADE)
+    turn = models.ForeignKey(Team, null=True, on_delete=models.CASCADE)
 
     @property
     def last_action(self):
@@ -331,11 +370,12 @@ class Event(models.Model):
 
 class MapPickManager(models.Manager):
 
-    def create(self, process, map_name, team=None, is_pick=None):
+    def create(self, process, map: GameMap, team=None, is_pick=None):
 
         pick = MapPick(
             process=process,
-            map_name=map_name,
+            map_name=map.value,
+            map_codename=map.name,
             selected_by=team,
             picked=is_pick,
         )
@@ -349,7 +389,10 @@ class MapPick(models.Model):
 
     process = models.ForeignKey("MapPickProcess", models.CASCADE, related_name="maps")
 
+    # nice name
     map_name = models.CharField(max_length=100)
+    # codename used by bukkit
+    map_codename = models.CharField(max_length=100)
     selected_by = models.ForeignKey(Team, models.CASCADE, null=True, default=None)
     picked = models.BooleanField(null=True, default=None)
     objects = MapPickManager()
@@ -372,6 +415,26 @@ class Role(models.Model):
     chat_message_color = models.CharField(max_length=100)
     team_override_color = models.BooleanField(max_length=100)
     permissions = models.ManyToManyField(PlayerPermission, related_name="permissions")
+
+    def has_perm(self, perm):
+        for has_perm in self.permissions.all():
+            parts_present = has_perm.name.split(".")
+            parts_required = perm.split(".")
+
+            # present permission is more specific than required
+            if len(parts_present) > len(parts_required):
+                continue
+
+            # iterate both lists and check if they match
+            for pres, req in zip(parts_present, parts_required):
+                if pres != req:
+                    if pres == "*":
+                        return True
+                    break
+            else:
+                return True
+
+        return False
 
 
 class Article(models.Model):
