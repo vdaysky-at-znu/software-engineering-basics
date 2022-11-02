@@ -1,4 +1,4 @@
-from api.consumers import WebsocketConnection, WsSessionManager
+from api.consumers import WsConn, WsPool
 from api.events.event import EventOut
 from api.events.manager import EventManager
 from api.events.schemas.websocket import BukkitInitEvent, PingEvent, ConfirmEvent
@@ -10,14 +10,16 @@ WsEventManager = EventManager()
 
 
 @WsEventManager.on(ConfirmEvent)
-async def confirm(consumer: WebsocketConnection, event: ConfirmEvent):
+async def confirm(consumer: WsConn, event: ConfirmEvent):
+    # TODO: response payload?
+
     future = consumer.awaiting_response[event.confirm_message_id]
     future.set_result(event)
     return
 
 
 @WsEventManager.on(PingEvent)
-async def confirm_ping(consumer: WebsocketConnection, event: PingEvent):
+async def confirm_ping(consumer: WsConn, event: PingEvent):
     evt = EventOut(
         type="PING",
         payload={"ping_id": event.ping_id}
@@ -27,7 +29,7 @@ async def confirm_ping(consumer: WebsocketConnection, event: PingEvent):
 
 
 @WsEventManager.on(BukkitInitEvent)
-async def init_bukkit(consumer: WebsocketConnection, event: BukkitInitEvent):
+async def init_bukkit(consumer: WsConn, event: BukkitInitEvent):
 
     # todo: secret authentication
     if event.secret is None:
@@ -35,7 +37,7 @@ async def init_bukkit(consumer: WebsocketConnection, event: BukkitInitEvent):
 
     consumer.is_bukkit = True
 
-    WsSessionManager.add_bukkit_server(consumer)
+    WsPool.set_bukkit(consumer)
 
     evt = EventOut(
         type="ACK_CONN",

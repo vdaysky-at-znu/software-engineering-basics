@@ -17,7 +17,7 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.websockets import WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.consumers import WebsocketConnection
+from api.consumers import WsConn
 
 from api.exceptions import install_exception_handlers
 
@@ -29,6 +29,8 @@ origins = [
     "http://localhost:8000",
     "http://localhost:8081",
     "http://127.0.0.1:8081",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080"
 ]
 
 app.add_middleware(
@@ -89,5 +91,5 @@ register_signals()
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("new websocket connection")
-    conn = WebsocketConnection(websocket)
+    conn = WsConn(websocket)
     await conn.run()

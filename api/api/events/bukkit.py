@@ -51,7 +51,9 @@ async def on_player_request_join_game(minestrike: MineStrike, event: RequestPlay
         session = PlayerSession.objects.create(
             game=game,
             player=player,
-            roster=game.get_emptier_team()
+            roster=game.get_emptier_team(),
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.AWAY
         )
 
     # update model that was indirectly updated
@@ -62,7 +64,7 @@ async def on_player_request_join_game(minestrike: MineStrike, event: RequestPlay
 
     # once player is recognized as member by backend we can trigger
     # join event
-    await minestrike.join_game(game, player, session.roster)
+    await minestrike.join_game(game, player, session.roster, None, None)
 
 
 @BukkitEventManager.on(PlayerLeaveGameEvent)
@@ -100,6 +102,8 @@ async def on_game_end(minestrike: MineStrike, event: PreGameEndEvent):
     if None not in (event.looser, event.winner):
         winner = event.looser
         looser = event.winner
+
+        game.winner = winner
 
         if game.has_plugin("RankedPlugin"):
             win, loose = compute_elo(winner, looser)

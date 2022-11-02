@@ -1,13 +1,13 @@
 import inspect
 import json
-from typing import List, TypeVar, Generic, get_args, Type
+from typing import List, TypeVar, Generic, get_args, Type, Tuple, Optional
 
 from ariadne import QueryType, make_executable_schema, ObjectType
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, F
 
 from api.graphql.virtual import TableManager, VirtualTable, Table, computed, PaginatedTable, VirtualGenericTable
 from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite, \
-    MapPickProcess, MapPick, GamePlayerEvent
+    MapPickProcess, MapPick, GamePlayerEvent, PlayerQueue, MatchTeam, Post
 
 tableManager = TableManager()
 
@@ -22,6 +22,17 @@ class Page(Generic[T], VirtualGenericTable):
     def __init__(self, count: int, items: List[T]):
         self.count = count
         self.items = items
+
+
+@tableManager.table
+class ArticleTable(Table[Post]):
+    id: int
+    title: str
+    subtitle: str
+    text: str
+    author_id: int
+    date: str
+    header_image: str
 
 
 @tableManager.table
@@ -44,6 +55,22 @@ class PlayerTable(Table[Player]):
     role_id: int
     team_id: int
     owned_team_id: int
+
+    @computed
+    def game_id(self) -> Optional[int]:
+        game = self.get_active_game()
+        if game:
+            return game.id
+
+    @computed
+    def in_server(self) -> bool:
+        return False
+
+    @computed
+    def on_website(self) -> bool:
+        from api.consumers import WsPool
+        conn = WsPool.get_player_conn(self)
+        return conn is not None
 
 
 @tableManager.table
@@ -101,6 +128,18 @@ class MatchTable(Table[Match]):
     def game_ids(self, page: int = 0, count: int = 10) -> Page[int]:
         _all = Game.objects.filter(match_id=self.id)
         return Page(_all.count(), [game.id for game in _all[page * count:page * count + count]])
+
+
+@tableManager.table
+class MatchTeamTable(Table[MatchTeam]):
+    id: int
+    team_id: int
+    name: str
+    in_game_team_id: int
+
+    @computed(paginate=True)
+    def player_ids(self) -> List[int]:
+        return self.players.all()
 
 
 @tableManager.table(queryable=False)
@@ -293,6 +332,23 @@ class PlayerPerformanceAggregatedView(VirtualTable):
         self.hs *= 100
         self.hs = round(self.hs, 2)
 
+    @computed
+    def games_played(self) -> int:
+        # temporary, possible to abuse by spamming sessions
+        return PlayerSession.objects.filter(player_id=self.player_id).count()
+
+    @computed
+    def games_won(self) -> int:
+        return PlayerSession.objects.filter(player_id=self.player_id, roster=F('game__winner')).count()
+
+    @computed
+    def ranked_games_played(self) -> int:
+        return PlayerSession.objects.filter(player_id=self.player_id, game__plugins__contains='RankedPlugin').count()
+
+    @computed
+    def ranked_games_won(self) -> int:
+        return PlayerSession.objects.filter(player_id=self.player_id, roster=F('game__winner'), game__plugins__contains='RankedPlugin').count()
+
 
 @tableManager.table
 class PlayerStatId(VirtualTable):
@@ -317,26 +373,113 @@ class GameStatsView(VirtualTable):
 
         stats = GamePlayerEvent.objects.all()
 
-        print(f"get stats")
         if self.player_id:
-            print(f"with player: {self.player_id}")
             stats = stats.filter(player_id=self.player_id)
 
         if self.in_game_team_id:
-            print(f"with team: {self.in_game_team_id}")
             team = InGameTeam.objects.get(id=self.in_game_team_id)
             self.game_id = team.game.id
             stats = stats.filter(game=team.game, player_id__in=team.sessions.values_list('player', flat=True))
 
         if self.game_id:
-            print(f"with game: {self.game_id}")
             stats = stats.filter(game_id=self.game_id)
 
         # find all players with stats
         players = stats.values_list('player_id', flat=True).distinct()
-        print(f"Players: {players}")
 
         return [PlayerStatId(player, self.game_id) for player in players]
+
+
+@tableManager.table
+class TopTeamView(TeamTable):
+
+    @classmethod
+    def get_type_name(cls):
+        return 'TopTeamView'
+
+    @classmethod
+    def get_constructor_args(cls) -> List[Tuple[str, Type]]:
+        return [('order_by', str)]
+
+    @classmethod
+    def resolve(cls, order_by: str = '-elo'):
+        return Team.objects.all().order_by(order_by).first()
+
+
+@tableManager.table
+class TopPlayersView(VirtualTable):
+
+    def __init__(self, order_by: str):
+        self.order_by = order_by
+
+    @computed(paginate=True)
+    def player_ids(self) -> List[int]:
+        return Player.objects.all().order_by(self.order_by)
+
+
+@tableManager.table
+class PubsView(VirtualTable):
+    """ View of all games that don't have any plugins and can be joined by anyone """
+
+    def __init__(self):
+        pass
+
+    @computed(paginate=True)
+    def game_ids(self) -> List[int]:
+        return Game.objects.filter(mode=Game.Mode.PUB).exclude(status=Game.Status.FINISHED).values_list('id', flat=True)
+
+
+@tableManager.table
+class RankedView(VirtualTable):
+
+    def __init__(self):
+        pass
+
+    @computed
+    def my_queue_id(self) -> Optional[int]:
+        if not self.context['player']:
+            return None
+
+        queue = PlayerQueue.players.through.objects.filter(player_id=self.context['player'].id).first()
+        if queue:
+            return queue.playerqueue.id
+
+    @computed(paginate=True)
+    def queue_ids(self) -> List[int]:
+        return PlayerQueue.objects.filter(type=PlayerQueue.Type.RANKED).values_list('id', flat=True)
+
+
+@tableManager.table
+class PlayerQueueTable(Table[PlayerQueue]):
+    type: int
+    locked: bool
+    confirmed: bool
+    match_id: int
+    captain_a_id: int
+    captain_b_id: int
+
+    @computed(paginate=True)
+    def team_a(self) -> List[int]:
+        return self.team_a.values_list('id', flat=True)
+
+    @computed(paginate=True)
+    def team_b(self) -> List[int]:
+        return self.team_b.values_list('id', flat=True)
+
+    @computed(paginate=True)
+    def player_ids(self) -> List[int]:
+        return self.players.values_list('id', flat=True)
+
+    @computed
+    def confirmed_count(self) -> int:
+        return self.confirmed_players.count()
+
+    @computed
+    def confirmed_by_me(self) -> bool:
+        if not self.context['player']:
+            return False
+
+        return self.confirmed_players.filter(id=self.context['player'].id).exists()
 
 
 type_defs = """

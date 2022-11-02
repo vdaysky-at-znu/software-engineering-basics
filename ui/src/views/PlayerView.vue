@@ -1,15 +1,13 @@
 <template>
-    <v-container>
-          <player-widget :player="player"></player-widget>
-    </v-container>
+    <player-profile :player="player" :own="false"></player-profile>
 </template>
 
 <script>
-import PlayerWidget from '@/components/widgets/PlayerWidget.vue'
 import { Player } from '@/api/model/models.js';
+import PlayerProfile from '@/components/common/PlayerProfile.vue';
 
 export default {
-  components: { PlayerWidget },
+  components: { PlayerProfile },
     data() {
         return {
             player: new Player(this.$route.params.id),

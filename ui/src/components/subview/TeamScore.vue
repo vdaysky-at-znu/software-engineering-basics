@@ -20,7 +20,7 @@
                 </th>
 
                 <th>
-                    KD
+                    K/D
                 </th>
 
                 <th>
@@ -46,7 +46,7 @@
                     {{ stat.assists }}
                 </td>
                 <td>
-                    {{ (stat.kills || 0) / (stat.deaths || 1) }}
+                    {{ stat.kd() }}
                 </td>
                 <td>
                     {{ stat.hs }}%

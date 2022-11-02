@@ -9,12 +9,15 @@ from api.models import Player, AuthSession, Role
 
 
 async def login_user(username: str, password: str) -> Optional[AuthSession]:
-    uuid = await get_uuid(username)
 
-    user = Player.objects.get(uuid=uuid)
+    user = Player.objects.filter(username=username).first()
 
-    if not check_password(password, user.password):
-        return None
+    # uuid = await get_uuid(username)
+    #
+    # user = Player.objects.get(uuid=uuid)
+    #
+    # if not check_password(password, user.password):
+    #     return None
 
     return AuthSession.create(user)
 
@@ -57,3 +60,12 @@ async def get_name_status(name) -> NameStatus:
         return NameStatus.NAME_TAKEN
 
     return NameStatus.NAME_AVAILABLE
+
+
+def get_player(session_id):
+    session = AuthSession.objects.filter(session_key=session_id).first()
+
+    if session is None:
+        return None
+
+    return session.player

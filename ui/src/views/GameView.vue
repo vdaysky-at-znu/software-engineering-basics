@@ -1,5 +1,11 @@
 <template>
   <v-container>
+    <h1 class="text-center">{{ game.map }}</h1>
+
+    <div v-if="game.match" class="text-center">
+      <match-widget :match="game.match"></match-widget>
+    </div>
+    
     <v-container class="pb-0">
       <h2>
         {{ game.team_a?.name }} - {{ game.score_a }}
@@ -21,8 +27,9 @@
 <script>
 import TeamScore from '@/components/subview/TeamScore.vue'
 import { Game } from '@/api/model/models'
+import MatchWidget from '@/components/widgets/MatchWidget.vue'
 export default {
-  components: { TeamScore },
+  components: { TeamScore, MatchWidget },
   data(){
     return {
       game: new Game(this.$route.params.id),

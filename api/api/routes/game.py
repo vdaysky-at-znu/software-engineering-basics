@@ -1,12 +1,14 @@
 import random
+from typing import Optional
 
 from fastapi import APIRouter
 
 from api.constants import GameMap
 from api.dependencies import PlayerAuthDependency
 from api.models import Player, Match, Game, InGameTeam, PlayerSession, Round, GamePlayerEvent
-from api.schemas.game import CreateGame
+from api.schemas.game import CreateGame, JoinGame
 from api.exceptions import PermissionError, BadRequestError
+from api.services.game import join_game, find_team_for_player
 
 router = APIRouter()
 
@@ -117,3 +119,25 @@ async def test_create():
                     )
 
         return game.id
+
+
+@router.post("/join")
+async def join(data: JoinGame, player: Player = PlayerAuthDependency):
+
+    roster = find_team_for_player(data.game, player)
+
+    if not player.can_join_game(
+            data.game,
+            roster=roster,
+            status=PlayerSession.Status.PARTICIPATING
+    ):
+        return
+
+    return await join_game(
+        data.game,
+        player,
+        roster=roster,
+        status=PlayerSession.Status.PARTICIPATING
+    )
+
+

@@ -11,7 +11,7 @@ from pydantic.main import create_model
 from django.db.models import Model
 
 from api.exceptions import AuthorizationError
-from api.models import Team, Player, AuthSession, Event, Match, Game, Invite, InGameTeam, MapPick
+from api.models import Team, Player, AuthSession, Event, Match, Game, Invite, InGameTeam, MapPick, PlayerQueue
 
 # Inherit str to make type serializable by openapi
 from api.util import OrmBaseModel
@@ -422,3 +422,4 @@ TeamField = DatabaseModelField(model=Team, primary_field="id", type=int)
 PlayerField = DatabaseModelField(model=Player, primary_field="id", type=int)
 InGameTeamField = DatabaseModelField(model=InGameTeam, primary_field="id", type=int)
 MapPickField = DatabaseModelField(model=MapPick, primary_field="id", type=int)
+QueueField = DatabaseModelField(model=PlayerQueue, primary_field="id", type=int)

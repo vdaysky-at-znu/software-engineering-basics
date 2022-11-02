@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from api.routes import roster, player, auth, event, match, game, bukkit, elo
+from api.routes import roster, player, auth, event, match, game, bukkit, elo, queue
 
 
 def get_v1_router():
@@ -14,5 +14,6 @@ def get_v1_router():
     v1_router.include_router(prefix="/game", router=game.router)
     v1_router.include_router(prefix="/bukkit", router=bukkit.router)
     v1_router.include_router(prefix="/elo", router=elo.router)
+    v1_router.include_router(prefix="/queue", router=queue.router)
     return v1_router
 

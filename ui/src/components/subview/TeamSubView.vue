@@ -6,7 +6,7 @@
       </v-card-title>
       <v-card-text class="pt-0">
         <contextual-list
-          v-bind="$attrs"
+          v-bind="dynamicProps"
           :listComponent="PlayerList"
           :source="team.members"
           propname="players"
@@ -29,6 +29,14 @@ export default {
         }
     },
     props: {'team': null},
+    computed: {
+      dynamicProps() {
+        let a = {...this.$attrs};
+        console.log("$attrs", a);
+        delete a['style'];
+        return a;
+      }
+    }
 
 }
 </script>

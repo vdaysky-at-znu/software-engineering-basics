@@ -11,16 +11,20 @@
         ></v-app-bar-nav-icon>
       </template>
 
-      <v-app-bar-title @click="$router.push({ name: 'home' })"
-        >BetterMS</v-app-bar-title
-      >
-      <v-spacer></v-spacer>
+      <v-app-bar-title @click="$router.push({ name: 'home' })">
+        BetterMS
+      </v-app-bar-title>
 
       <div v-show="smAndUp">
-        <v-btn :to="{ name: 'players' }" flat>Players</v-btn>
-        <v-btn :to="{ name: 'teams' }" flat>Teams</v-btn>
-        <v-btn :to="{ name: 'events' }" flat>Events</v-btn>
-      </div>
+          <v-btn :to="{ name: 'play' }" flat>Play</v-btn>
+        </div>
+      <v-spacer></v-spacer>
+        <div v-show="smAndUp">
+          <v-btn :to="{ name: 'players' }" flat>Players</v-btn>
+          <v-btn :to="{ name: 'teams' }" flat>Teams</v-btn>
+          <v-btn :to="{ name: 'events' }" flat>Events</v-btn>
+        </div>
+      
 
       <v-spacer></v-spacer>
       <div v-if="!$store.state.player.isAuthenticated()">
@@ -39,9 +43,10 @@
       </v-list>
     </v-navigation-drawer>
 
-    <v-row>
+    <v-row style="height: 100%">
       <v-col style="background: #cdcdcd; padding-top: 110px" cols="0" lg="2" v-show="!mdAndDown">
         <div>
+          <h3 class="text-center">Top Team</h3>
           <team-sub-view dense class="pa-0" :team="topTeam"></team-sub-view>
           <!-- <playerbase-ctx :players="topPlayers.players"></playerbase-ctx> -->
         </div>
@@ -55,8 +60,9 @@
       </v-col>
 
       <v-col style="background: #cdcdcd; padding-top: 110px" cols="0" lg="2" v-show="!mdAndDown">
+        <h3 class="text-center">Top Players</h3>
         <v-sheet rounded="lg" min-height="268">
-          <!--  -->
+          <player-list :players="topPlayersView.players"></player-list>
         </v-sheet>
       </v-col>
     </v-row>
@@ -99,19 +105,19 @@ import AuthForm from "./components/AuthForm.vue";
 import API from "./api/api";
 import ProfileLink from "./components/ProfileLink.vue";
 import TeamSubView from "./components/subview/TeamSubView.vue";
-import { Team } from './api/model/models';
-// import PlayerbaseCtx from './components/contextual/PlayerbaseCtx.vue';
+import { TopPlayersView, TopTeamView } from './api/model/models';
+import PlayerList from './components/lists/PlayerList.vue';
 
 export default {
   name: "App",
 
-  components: { AuthForm, ProfileLink, TeamSubView },
+  components: { AuthForm, ProfileLink, TeamSubView, PlayerList },
 
   data: () => ({
     wide: false,
     left_active: true,
-    topTeam: new Team(2),
-    // topPlayers: new TopPlayersView({criteria: 'ranked'}),
+    topTeam: new TopTeamView({order_by: '-elo'}),
+    topPlayersView: new TopPlayersView({order_by: '-elo'}),
     icon: null,
   }),
 

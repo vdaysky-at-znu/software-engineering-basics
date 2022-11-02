@@ -9,28 +9,35 @@ from django.db.models import Model
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from api.events.event import EventOut, AbsEvent
+from api.models import Player, AuthSession
 
 
-class WsSessionManager:
+class WsPool:
     """ Stores every websocket consumer instance associated with session. """
 
-    # user.id: consumer
-    _session_registry: Dict[int, WebsocketConnection] = {}
-    _connections: List[WebsocketConnection] = []
-    _bukkit: Optional[WebsocketConnection] = None
+    # associate user ID with websocket connection wrapper
+    _session_registry: Dict[int, WsConn] = {}
 
+    # store all connections
+    _connections: List[WsConn] = []
+
+    # store bukkit connection separately
+    _bukkit: Optional[WsConn] = None
+
+    # tasks to do when bukkit server comes online
     _on_connect_handlers = defaultdict(list)
 
     @classmethod
-    def add_bukkit_server(cls, conn):
+    def set_bukkit(cls, conn):
         cls._bukkit = conn
 
-        for server_id, l in cls._on_connect_handlers.items():
-            for h in l:
-                asyncio.create_task(h())
+        # run handlers
+        for server_id, handlers in cls._on_connect_handlers.items():
+            for handler in handlers:
+                asyncio.create_task(handler())
 
     @classmethod
-    def get_bukkit_server(cls, server_id=None) -> WebsocketConnection:
+    def get_bukkit_server(cls, server_id=None) -> WsConn:
         return cls._bukkit
 
     @classmethod
@@ -42,7 +49,7 @@ class WsSessionManager:
         cls._connections.append(conn)
 
     @classmethod
-    def disconnect(cls, conn):
+    def disconnect(cls, conn: WsConn):
         """ Once websocket disconnected, we forget it ever existed """
         if cls._bukkit == conn:
             cls._bukkit = None
@@ -53,6 +60,7 @@ class WsSessionManager:
         else:
             return
 
+        cls._connections.remove(conn)
         del cls._session_registry[k]
 
     @classmethod
@@ -76,12 +84,12 @@ class WsSessionManager:
         if not event:
             return
 
-        WsSessionManager.broadcast_event(evt)
+        WsPool.broadcast_event(evt)
 
     @classmethod
     def broadcast_event(cls, evt: EventOut):
 
-        print(f"broadcast to {cls._connections}")
+        print(f"broadcast to {len(cls._connections)}")
         for conn in cls._connections:
 
             # remove disconnected clients
@@ -102,12 +110,18 @@ class WsSessionManager:
         return inner
 
     @classmethod
-    def get_conn(cls, session_id):
+    def get_conn(cls, session_id) -> Optional[WsConn]:
         return cls._session_registry.get(session_id)
 
+    @classmethod
+    def get_player_conn(cls, player: Player) -> Optional[WsConn]:
+        for sess_id, conn in cls._session_registry.items():
+            if AuthSession.objects.get(id=sess_id).player == player:
+                return conn
 
-class WebsocketConnection:
-    """ FastAPI websocket connection """
+
+class WsConn:
+    """ FastAPI websocket connection wrapper """
 
     def __init__(self, websocket: WebSocket):
 
@@ -117,7 +131,7 @@ class WebsocketConnection:
         self.awaiting_response = {}
 
         # register connection, no matter if it's authorized or not
-        WsSessionManager.register_connection(self)
+        WsPool.register_connection(self)
 
     async def run(self):
         """ Keep reading and dispatching events """
@@ -128,7 +142,7 @@ class WebsocketConnection:
             try:
                 data = await self.websocket.receive_json()
             except WebSocketDisconnect:
-                return WsSessionManager.disconnect(self.session)
+                return WsPool.disconnect(self)
 
             # parse event with name and payload
             event = AbsEvent.parse_obj(data)
@@ -136,14 +150,14 @@ class WebsocketConnection:
             # handle without blocking.
             # We will be waiting for confirmation message from client
             # so blocking is a stupid idea
-            coro = WsEventManager.propagate_event(event, self)
+            coro = WsEventManager.propagate_abstract_event(event, self)
             asyncio.create_task(coro)
 
     async def send_event(self, event: EventOut):
 
         if self.websocket.client_state == WebSocketState.DISCONNECTED:
-            WsSessionManager.disconnect(self)
-            raise ValueError("Client disconnected")
+            WsPool.disconnect(self)
+            return
 
         response = Future()
         self.awaiting_response[event.message_id] = response

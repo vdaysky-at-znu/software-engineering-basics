@@ -28,21 +28,21 @@ Minestrike servers. It is written in Python and uses the Django framework as wel
   - [ ] Add a way for a player to leave a team
   - [ ] Add a way for a player to accept invite to a team
   - [ ] Add a way for a player to decline invite to a team
-  - [ ] Add a way for a player to view list of games (frontend view)
+  - [x] Add a way for a player to view list of games (frontend view)
   - [ ] Add a way for a player to filter games in list view
-  - [ ] Add a way for a player to view game details (frontend view)
+  - [x] Add a way for a player to view game details (frontend view)
   - [x] Add a way for a player to view list of teams (frontend view)
-  - [ ] Add a way for a player to view teams details (frontend view)
+  - [x] Add a way for a player to view teams details (frontend view)
   - [x] Add a way for a player to view list of players (frontend view)
-  - [ ] Add a way for a player to view player profile (frontend view)
+  - [x] Add a way for a player to view player profile (frontend view)
   - [x] Add a way for a player to view list of matches (frontend view)
   - [ ] Add a way for a player to filter matches in list view
-  - [ ] Add a way for a player to view match details (frontend view)
+  - [x] Add a way for a player to view match details (frontend view)
   - [x] Add a way for a player to view list of events (frontend view)
   - [ ] Add a way for a player to filter events in list view
   - [x] Add a way for a player to view event details (frontend view)
   - [ ] Add main page with news
-  - [ ] Add a limited view for top entities on the main page
+  - [x] Add a limited view for top entities on the main page
 
 ---
 
