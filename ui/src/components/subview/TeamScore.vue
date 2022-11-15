@@ -74,10 +74,12 @@ export default {
         }
     },
     watch: {
-        team() {
+        team: {
+            handler() {
             this.statsView = new GameStatsView({in_game_team_id: this.team.id})
-            console.log("Stats View: ", this.statsView);
-        }
+        },
+        immediate: true,
+        },
     }
 }
 </script>

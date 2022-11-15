@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <h1 class="text-center">{{ game.map }}</h1>
+    <h1 class="text-center">{{ game?.map?.display_name }}</h1>
 
     <div v-if="game.match" class="text-center">
       <match-widget :match="game.match"></match-widget>
@@ -8,7 +8,7 @@
     
     <v-container class="pb-0">
       <h2>
-        {{ game.team_a?.name }} - {{ game.score_a }}
+        {{ game.team_a?.name || sideName(game?.team_a?.is_ct) }} - {{ game.score_a }}
       </h2>
     </v-container>
     
@@ -16,7 +16,7 @@
 
     <v-container class="pb-0">
       <h2>
-        {{ game.team_b?.name }} - {{ game.score_b }}
+        {{ game.team_b?.name || sideName(game?.team_b?.is_ct) }} - {{ game.score_b }}
       </h2>
     </v-container>
     
@@ -35,6 +35,11 @@ export default {
       game: new Game(this.$route.params.id),
     }
   },
+  methods: {
+    sideName(isCT) {
+      return isCT ? 'SWAT' : 'Terrorists'
+    }
+  }
 
 }
 </script>

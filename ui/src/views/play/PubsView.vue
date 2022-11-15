@@ -1,15 +1,14 @@
 <template>
   <v-container>
-    <contextual-list :source="pubs.games" propname="games" :listComponent="GameList" paginated interactive>
+    <game-list :games="pubs.games" paginated interactive>
 
-    </contextual-list>
+    </game-list>
   </v-container>
 </template>
 
 <script>
 import { PubsView } from '@/api/model/models'
-import ContextualList from '@/components/contextual/ContextualList.vue'
-import GameList from '@/components/lists/GameList.vue'
+import GameList from '@/components/contextual/GameList.vue'
 export default {
 
     setup() {
@@ -18,7 +17,7 @@ export default {
         }
     },
 
-    components: { ContextualList },
+    components: { GameList },
     data() { 
         return {
             pubs: null,

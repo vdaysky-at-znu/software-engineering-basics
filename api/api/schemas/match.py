@@ -3,7 +3,6 @@ from datetime import datetime
 from pydantic.class_validators import validator
 from pydantic.main import BaseModel
 
-from api.constants import GameMap
 from api.dependencies import EventField, TeamField, MapPickField
 
 

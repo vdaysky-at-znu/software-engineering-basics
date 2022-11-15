@@ -2,8 +2,14 @@ import Model, { Page } from './model.js';
 // import VirtualModel from './virtual.js';
 
 
+export class Map extends Model {
+    static __modelname = 'Map';
+    static name = String;
+    static display_name = String;
+}
+
 export class Game extends Model {
-    static map = String;
+    static map = Map;
     static is_started = Boolean;
     static is_finished = Boolean;
     static score_a = Number;
@@ -11,6 +17,15 @@ export class Game extends Model {
     static team_a = 'InGameTeam';
     static team_b = 'InGameTeam';
     static match = 'Match';
+    static whitelist = ['Player'];
+    static blacklist = ['Player'];
+
+    isFull() {
+        return (this?.team_a?.players?.length||0) + (this?.team_b?.players?.length||0) >= 10;
+    }
+    playerCount() {
+        return (this?.team_a?.players?.length||0) + (this?.team_b?.players?.length||0)
+    }
 }
 
 export class Team extends Model {
@@ -34,7 +49,7 @@ export class Role extends Model {
     static __modelname = "Role";
 
     static name = String;
-    static permissions = Page(Permission)
+    static permissions = [Permission]
 
 }
 
@@ -168,7 +183,7 @@ export class Event extends Model {
 export class InGameTeam extends Model {
     static __modelname = "InGameTeam";
     static name = String;
-    static players = Page(Player);
+    static players = [Player];
     static is_ct = Boolean;
     static starts_as_ct = Boolean;
 }
@@ -276,6 +291,26 @@ export class TopTeamView extends Team {
 
 export class PubsView extends Model {
     static games = Page(Game);
+    static online_player_count = Number;
+}
+
+export class DeathMatchView extends Model {
+    static games = Page(Game);
+}
+
+export class DuelsView extends Model {
+    static games = Page(Game);
+}
+
+export class GameModeStatsView extends Model {
+    static ranked_online = Number;
+    static pubs_online = Number;
+    static duels_online = Number;
+    static deathmatch_online = Number;
+    static ranked_games = Number;
+    static pubs_games = Number;
+    static duels_games = Number;
+    static deathmatch_games = Number;
 }
 
 export class PlayerQueue extends Model {

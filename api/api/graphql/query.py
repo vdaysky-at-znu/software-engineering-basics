@@ -7,7 +7,7 @@ from django.db.models import Q, Sum, Count, F
 
 from api.graphql.virtual import TableManager, VirtualTable, Table, computed, PaginatedTable, VirtualGenericTable
 from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, PlayerSession, Event, Match, Invite, \
-    MapPickProcess, MapPick, GamePlayerEvent, PlayerQueue, MatchTeam, Post
+    MapPickProcess, MapPick, GamePlayerEvent, PlayerQueue, MatchTeam, Post, Map
 
 tableManager = TableManager()
 
@@ -55,16 +55,13 @@ class PlayerTable(Table[Player]):
     role_id: int
     team_id: int
     owned_team_id: int
+    in_server: bool
 
     @computed
     def game_id(self) -> Optional[int]:
         game = self.get_active_game()
         if game:
             return game.id
-
-    @computed
-    def in_server(self) -> bool:
-        return False
 
     @computed
     def on_website(self) -> bool:
@@ -87,8 +84,8 @@ class RoleTable(Table[Role]):
     team_override_color: bool
 
     @computed
-    def permission_ids(self, page: int = 0, size: int = 10) -> Page[int]:
-        return Page(self.permissions.count(), self.permissions.values_list('id', flat=True)[page * size:page * size + size])
+    def permission_ids(self) -> List[int]:
+        return self.permissions.values_list('id', flat=True)
 
 
 @tableManager.table
@@ -131,6 +128,13 @@ class MatchTable(Table[Match]):
 
 
 @tableManager.table
+class MapTable(Table[Map]):
+    id: int
+    name: str
+    display_name: str
+
+
+@tableManager.table
 class MatchTeamTable(Table[MatchTeam]):
     id: int
     team_id: int
@@ -146,7 +150,11 @@ class MatchTeamTable(Table[MatchTeam]):
 class Config(VirtualTable):
     overrides: str
 
-    def __init__(self, game_id: int):
+    @classmethod
+    def resolve(cls, __parent=None, **args):
+        return cls(game=__parent)
+
+    def __init__(self, game: Game):
         self.overrides = json.dumps({
             "something": 1
         })
@@ -155,7 +163,7 @@ class Config(VirtualTable):
 @tableManager.table
 class GameTable(Table[Game]):
     id: int
-    map: str
+    map_id: int
     is_finished: bool
     is_started: bool
     match_id: int
@@ -171,8 +179,12 @@ class GameTable(Table[Game]):
         return [s.id for s in self.sessions.all()]
 
     @computed
-    def blacklist(self) -> List[int]:
-        return []
+    def blacklist_ids(self) -> List[int]:
+        return [p.id for p in self.blacklist.all()]
+
+    @computed
+    def whitelist_ids(self) -> List[int]:
+        return [p.id for p in self.whitelist.all()]
 
 
 @tableManager.table
@@ -215,7 +227,7 @@ class InGameTeamTable(Table[InGameTeam]):
     starts_as_ct: bool
     is_ct: bool
 
-    @computed(paginate=True)
+    @computed
     def player_ids(self) -> List[int]:
         return [p.player.id for p in self.sessions.all()]
 
@@ -371,21 +383,19 @@ class GameStatsView(VirtualTable):
     @computed(paginate=True)
     def stats(self) -> List[PlayerStatId]:
 
-        stats = GamePlayerEvent.objects.all()
+        # players to retrieve stats for
+        players = set()
 
         if self.player_id:
-            stats = stats.filter(player_id=self.player_id)
+            players.add(self.player_id)
 
         if self.in_game_team_id:
-            team = InGameTeam.objects.get(id=self.in_game_team_id)
-            self.game_id = team.game.id
-            stats = stats.filter(game=team.game, player_id__in=team.sessions.values_list('player', flat=True))
+            team: InGameTeam = InGameTeam.objects.get(id=self.in_game_team_id)
+            players.update(team.sessions.all().values_list('player_id', flat=True))
 
         if self.game_id:
-            stats = stats.filter(game_id=self.game_id)
-
-        # find all players with stats
-        players = stats.values_list('player_id', flat=True).distinct()
+            for team in InGameTeam.objects.filter(game_id=self.game_id):
+                players.update(team.sessions.all().values_list('player_id', flat=True))
 
         return [PlayerStatId(player, self.game_id) for player in players]
 
@@ -402,7 +412,7 @@ class TopTeamView(TeamTable):
         return [('order_by', str)]
 
     @classmethod
-    def resolve(cls, order_by: str = '-elo'):
+    def resolve(cls, __parent=None, order_by: str = '-elo'):
         return Team.objects.all().order_by(order_by).first()
 
 
@@ -427,6 +437,107 @@ class PubsView(VirtualTable):
     @computed(paginate=True)
     def game_ids(self) -> List[int]:
         return Game.objects.filter(mode=Game.Mode.PUB).exclude(status=Game.Status.FINISHED).values_list('id', flat=True)
+
+    @computed
+    def online_player_count(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.PUB,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+
+@tableManager.table
+class DeathMatchView(VirtualTable):
+
+    def __init__(self):
+        pass
+
+    @computed(paginate=True)
+    def game_ids(self) -> List[int]:
+        return Game.objects.filter(mode=Game.Mode.DEATHMATCH).exclude(status=Game.Status.FINISHED).values_list('id', flat=True)
+
+    @computed
+    def online_player_count(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.DEATHMATCH,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+
+@tableManager.table
+class DuelsView(VirtualTable):
+
+    def __init__(self):
+        pass
+
+    @computed(paginate=True)
+    def game_ids(self) -> List[int]:
+        return Game.objects.filter(mode=Game.Mode.DUELS).exclude(status=Game.Status.FINISHED).values_list('id', flat=True)
+
+    @computed
+    def online_player_count(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.DUELS,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+
+@tableManager.table
+class GameModeStatsView(VirtualTable):
+
+    def __init__(self):
+        pass
+
+    @computed
+    def ranked_online(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.RANKED,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+    @computed
+    def pubs_online(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.PUB,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+    @computed
+    def duels_online(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.DUELS,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+    @computed
+    def deathmatch_online(self) -> int:
+        return PlayerSession.objects.filter(
+            game__mode=Game.Mode.DEATHMATCH,
+            status=PlayerSession.Status.PARTICIPATING,
+            state=PlayerSession.State.IN_GAME
+        ).count()
+
+    @computed
+    def ranked_games(self) -> int:
+        return Game.objects.filter(mode=Game.Mode.RANKED).exclude(status=Game.Status.FINISHED).count()
+
+    @computed
+    def pubs_games(self) -> int:
+        return Game.objects.filter(mode=Game.Mode.PUB).exclude(status=Game.Status.FINISHED).count()
+
+    @computed
+    def duels_games(self) -> int:
+        return Game.objects.filter(mode=Game.Mode.DUELS).exclude(status=Game.Status.FINISHED).count()
+
+    @computed
+    def deathmatch_games(self) -> int:
+        return Game.objects.filter(mode=Game.Mode.DEATHMATCH).exclude(status=Game.Status.FINISHED).count()
 
 
 @tableManager.table
@@ -499,7 +610,7 @@ type_defs = """
         games: [Game]
         id: Int
     }
-    
+
 """ + tableManager.get_graphql_responses() + """
     
 """
@@ -568,12 +679,12 @@ def resolve_server_id(obj, info):
 
 @server.field("games")
 def resolve_lobbies(obj, info):
-    return Game.objects.filter(finished=False)
+    return Game.objects.exclude(status=Game.Status.FINISHED)
 
 
 @server.field("game_ids")
 def resolve_lobbies_ids(obj, info):
-    return [x.id for x in Game.objects.filter(finished=False)]
+    return [x.id for x in Game.objects.exclude(status=Game.Status.FINISHED)]
 
 
 # Create executable schema instance

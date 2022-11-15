@@ -1,4 +1,5 @@
 from enum import Enum, IntEnum
+from typing import Type
 
 
 class LocationCode(Enum):
@@ -13,11 +14,4 @@ class NameStatus:
     NAME_AVAILABLE = 3
 
 
-class GameMap(Enum):
-    MIRAGE = 'Mirage'
-    CACHE = 'Cache'
-    INFERNO = 'Inferno'
-    NUKE = 'Nuke'
-    OVERPASS = 'Overpass'
-    DUST_II = 'Dust II'
-    TRAIN = 'Train'
+AVAILABLE_PUBS_THRESHOLD = 2

@@ -1,3 +1,6 @@
+import logging
+import traceback
+
 from api.consumers import WsConn, WsPool
 from api.events.event import EventOut
 from api.events.manager import EventManager
@@ -6,15 +9,24 @@ from api.exceptions import AuthorizationError
 
 WsEventManager = EventManager()
 
-# TODO: rename events on bukkit side
-
 
 @WsEventManager.on(ConfirmEvent)
 async def confirm(consumer: WsConn, event: ConfirmEvent):
     # TODO: response payload?
+    msg_id = event.confirm_message_id
 
-    future = consumer.awaiting_response[event.confirm_message_id]
-    future.set_result(event)
+    if msg_id not in consumer.awaiting_response:
+        logging.warning("")
+        return
+
+    future = consumer.awaiting_response[msg_id]
+    logging.info(f"Confirming message {msg_id} ({future})")
+    try:
+        future.set_result(event.payload)
+        consumer.awaiting_response.pop(msg_id)
+    except Exception as e:
+        traceback.print_exc()
+        logging.error(f"Error while setting future result: {e}")
     return
 
 

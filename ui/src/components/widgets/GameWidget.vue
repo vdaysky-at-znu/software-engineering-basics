@@ -1,5 +1,5 @@
 <template>
-  <router-link :to="{name: 'game', params: {'id': game.id} }"> {{ game.map }} {{ score }} </router-link>
+  <router-link :to="{name: 'game', params: {'id': game.id} }"> {{ game?.map?.display_name }} {{ score }} </router-link>
 </template>
 
 <script>

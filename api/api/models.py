@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import logging
 import random
 from datetime import datetime
 from enum import IntEnum
@@ -12,7 +13,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser, Permission
 from django.db.models import Q
 
-from api.constants import LocationCode, GameMap
+from api.constants import LocationCode
 from api.events.schemas.internal import PlayerLeftGame, PlayerRosterChange, PlayerStatusChange, PlayerJoinGame
 
 
@@ -58,6 +59,8 @@ class Player(AbstractUser):
     location_code = models.CharField(default=LocationCode.NONE, max_length=20)
     verified_at = models.DateTimeField(null=True, default=None)
 
+    in_server = models.BooleanField(default=False)
+
     def has_perm(self, perm, obj=None):
         return self.role is not None and self.role.has_perm(perm)
 
@@ -90,10 +93,12 @@ class Player(AbstractUser):
 
         # Player is not whitelisted
         if game.whitelist.count() != 0 and not game.whitelist.filter(id=self.id).exists():
+            logging.info("Player is not whitelisted")
             return False
 
         # Player is blacklisted
         if game.blacklist.filter(id=self.id).exists():
+            logging.info("Player is blacklisted")
             return False
 
         participants = len(game.get_online_sessions(status=PlayerSession.Status.PARTICIPATING))
@@ -101,10 +106,12 @@ class Player(AbstractUser):
 
         # There are no free slots
         if status == PlayerSession.Status.PARTICIPATING and participants >= max_participants:
+            logging.info("No free slots")
             return False
 
         # Player can't be a coach in this in-game roster
         if status == PlayerSession.Status.COACH and not self.can_coach(roster):
+            logging.info("Can't be a coach")
             return False
 
         return True
@@ -186,6 +193,9 @@ class InGameTeam(models.Model):
         else:
             return "T"
 
+    def active_sessions(self):
+        return self.sessions.filter(state=PlayerSession.State.IN_GAME)
+
     def get_players(self):
         return [x.player for x in self.sessions.all()]
 
@@ -239,6 +249,28 @@ class MatchTeam(models.Model):
             team=team,
         )
 
+    @property
+    def match(self):
+        return self.match_one or self.match_two
+
+
+class MapTag(models.Model):
+    name = models.CharField(max_length=32, unique=True)
+
+
+class Map(models.Model):
+    display_name = models.CharField(max_length=32)
+    name = models.CharField(max_length=32)
+
+    tags = models.ManyToManyField(MapTag)
+
+    class Tag:
+        ACTIVE_POOL = 1
+
+    @classmethod
+    def with_tag(cls, *tag_ids):
+        return cls.objects.filter(tags__in=tag_ids).distinct()
+
 
 class Game(models.Model):
 
@@ -254,20 +286,15 @@ class Game(models.Model):
         DUELS = 4
         RANKED = 5
 
-    class ConfigField:
-        MAX_PLAYERS = "max_players"
+        @staticmethod
+        def to_code(name):
+            return getattr(Game.Mode, name.upper(), None)
 
-    map = models.CharField(
-        max_length=40,
-        choices=(
-               ('cache', 'Cache'),
-               ('mirage', 'Mirage'),
-               ('inferno', 'Inferno'),
-               ('overpass', 'Overpass'),
-               ('train', 'Train'),
-               ('nuke', 'Nuke'),
-           )
-        )
+    class ConfigField:
+        MAX_PLAYERS = "MAX_PLAYERS"
+        AUTO_TEAM_BALANCE = "AUTO_TEAM_BALANCE"
+
+    map = models.ForeignKey(Map, models.CASCADE)
 
     # Game status
     status = models.IntegerField(default=Status.NOT_STARTED)
@@ -295,19 +322,24 @@ class Game(models.Model):
     def get_default_config(self):
         return {
             Game.Mode.PUB: {
-                Game.ConfigField.MAX_PLAYERS: 10
+                Game.ConfigField.MAX_PLAYERS: 10,
+                Game.ConfigField.AUTO_TEAM_BALANCE: True,
             },
             Game.Mode.RANKED: {
-                Game.ConfigField.MAX_PLAYERS: 10
+                Game.ConfigField.MAX_PLAYERS: 10,
+                Game.ConfigField.AUTO_TEAM_BALANCE: False,
             },
             Game.Mode.DUELS: {
-                Game.ConfigField.MAX_PLAYERS: 10
+                Game.ConfigField.MAX_PLAYERS: 10,
+                Game.ConfigField.AUTO_TEAM_BALANCE: True,
             },
             Game.Mode.DEATHMATCH: {
-                Game.ConfigField.MAX_PLAYERS: 10
+                Game.ConfigField.MAX_PLAYERS: 10,
+                Game.ConfigField.AUTO_TEAM_BALANCE: False,
             },
             Game.Mode.COMPETITIVE: {
-                Game.ConfigField.MAX_PLAYERS: 10
+                Game.ConfigField.MAX_PLAYERS: 10,
+                Game.ConfigField.AUTO_TEAM_BALANCE: False,
             }
         }[self.mode]
 
@@ -323,6 +355,11 @@ class Game(models.Model):
         if status:
             q = q.filter(status=status)
         return q
+
+    def get_player_team(self, player: Player):
+        for team in [self.team_a, self.team_b]:
+            if player in team.get_players():
+                return team
 
     @property
     def is_started(self):
@@ -341,7 +378,7 @@ class Game(models.Model):
         if self.team_a.get_current_team() == short_name:
             return self.team_a
 
-    def get_session(self, player):
+    def get_session(self, player) -> PlayerSession:
         return PlayerSession.objects.filter(game=self, player=player).first()
 
     def has_plugin(self, plugin):
@@ -444,7 +481,7 @@ class MapPickProcessManager(models.Manager):
         map_pick_process = MapPickProcess()
         map_pick_process.save()
 
-        for map in GameMap:
+        for map in Map.with_tag(Map.Tag.ACTIVE_POOL):
             MapPick.objects.create(process=map_pick_process, map=map)
 
         return map_pick_process
@@ -518,8 +555,8 @@ class Match(models.Model):
     # set of players that *can* participate in game on behalf of a team at the moment of match creation
     # NOTE: Django is stupid, and thinks there would be a clash between the two reverse lookups.
     # if you ever need to run a migration, run it with --skip-checks flag.
-    team_one = models.OneToOneField(MatchTeam,  on_delete=models.SET_NULL, null=True, related_name="match")
-    team_two = models.OneToOneField(MatchTeam,  on_delete=models.SET_NULL, null=True, related_name="match")
+    team_one = models.OneToOneField(MatchTeam,  on_delete=models.SET_NULL, null=True, related_name="match_one")
+    team_two = models.OneToOneField(MatchTeam,  on_delete=models.SET_NULL, null=True, related_name="match_two")
 
     name = models.CharField(max_length=100, null=True, default=None)
     start_date = models.DateTimeField()
@@ -549,12 +586,11 @@ class Event(models.Model):
 
 class MapPickManager(models.Manager):
 
-    def create(self, process, map: GameMap, team=None, is_pick=None):
+    def create(self, process, map: Map, team=None, is_pick=None):
 
         pick = MapPick(
             process=process,
-            map_name=map.value,
-            map_codename=map.name,
+            map=map,
             selected_by=team,
             picked=is_pick,
         )
@@ -568,10 +604,7 @@ class MapPick(models.Model):
 
     process = models.ForeignKey("MapPickProcess", models.CASCADE, related_name="maps")
 
-    # nice name
-    map_name = models.CharField(max_length=100)
-    # codename used by bukkit
-    map_codename = models.CharField(max_length=100)
+    map = models.ForeignKey(Map, models.SET_NULL, null=True, related_name="+")
     selected_by = models.ForeignKey(Team, models.CASCADE, null=True, default=None)
     picked = models.BooleanField(null=True, default=None)
     objects = MapPickManager()

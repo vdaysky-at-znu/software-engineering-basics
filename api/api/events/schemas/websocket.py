@@ -1,3 +1,5 @@
+from typing import Optional, Dict
+
 from pydantic import BaseModel
 
 
@@ -11,3 +13,4 @@ class PingEvent(BaseModel):
 
 class ConfirmEvent(BaseModel):
     confirm_message_id: int
+    payload: Optional[Dict]

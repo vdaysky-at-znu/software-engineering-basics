@@ -22,7 +22,7 @@
     <v-row class="justify-center">
       <v-col cols="12" lg="6">
         <h3 class="text-center">Games</h3>
-        <contextual-list :source="match.games" :listComponent="GameList" propname="games"></contextual-list>
+        <game-list :games="match.games"></game-list>
       </v-col>
     </v-row>
   </v-container>
@@ -32,12 +32,11 @@
 import { Match } from '@/api/model/models'
 import MapPickProcessView from './MapPickProcessView.vue'
 import TeamSubView from '@/components/subview/TeamSubView.vue'
-import ContextualList from '@/components/contextual/ContextualList.vue'
-import GameList from '@/components/lists/GameList.vue'
+import GameList from '@/components/contextual/GameList.vue'
 import { useDisplay } from 'vuetify/lib/framework.mjs'
 
 export default {
-  components: { MapPickProcessView, TeamSubView, ContextualList },
+  components: { MapPickProcessView, TeamSubView, GameList },
   setup() {
     const { xs, smAndUp, smAndDown, mdAndDown } = useDisplay();
     return {

@@ -27,6 +27,7 @@
       
 
       <v-spacer></v-spacer>
+      
       <div v-if="!$store.state.player.isAuthenticated()">
         <AuthForm> </AuthForm>
       </div>

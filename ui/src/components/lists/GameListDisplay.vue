@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <v-table>
+    <v-table v-if="variant == 'table'">
       <thead>
         <tr>
           <th class="text-left">Map</th>
@@ -13,22 +13,7 @@
             <game-widget :game="game"></game-widget>
 
             <div v-if="joinable">
-              <v-btn
-                v-if="player?.in_server && player?.game?.id && player.game.id != game.id"
-                class="ms-10"
-                color="green"
-                variant="outlined"
-                @click="joinGame(game)"
-                >Join
-              </v-btn>
-              <v-chip class="ms-10" color='green' v-else-if="player?.in_server && player?.game?.id && player.game.id == game.id">
-                You Are In Game
-              </v-chip>
-              <copy-text
-                class="ms-10"
-                v-else
-                :value="`/join ${game.id}`"
-              ></copy-text>
+              <game-joiner :game="game"></game-joiner>
             </div>
           </td>
 
@@ -40,22 +25,27 @@
         </tr>
       </tbody>
     </v-table>
+    <v-row v-if="variant == 'cards'">
+      <v-col v-for="game in games" :key="game.id">
+        <game-card :game="game" :joinable="joinable"></game-card>
+      </v-col>
+    </v-row>
   </v-container>
 </template>
 
 <script>
-import CopyText from "../atom/CopyText.vue";
+import GameCard from "@/components/cards/GameCard.vue";
 import GameWidget from "../widgets/GameWidget.vue";
+import GameJoiner from "../atom/GameJoiner.vue";
 
 export default {
-  components: { GameWidget, CopyText },
+  components: { GameWidget, GameCard, GameJoiner },
   props: {
     games: Object,
     joinable: Boolean,
-  },
-  methods: {
-    joinGame(game) {
-      this.$api.joinGame(game);
+    variant: {
+      type: String,
+      default: "table",
     },
   },
   computed: {

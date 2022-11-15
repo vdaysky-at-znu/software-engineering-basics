@@ -125,7 +125,7 @@ import MapPickProcessView from "@/views/MapPickProcessView.vue";
 import ConfirmModal from "./ConfirmModal.vue";
 import PlayerWidget from "@/components/widgets/PlayerWidget.vue";
 import MatchWidget from "@/components/widgets/MatchWidget.vue";
-import GameList from "@/components/lists/GameList.vue";
+import GameList from "@/components/contextual/GameList.vue";
 export default {
   components: {
     PlayerList,

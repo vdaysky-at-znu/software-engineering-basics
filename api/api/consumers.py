@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from asyncio import Future
 from collections import defaultdict
 from typing import Dict, Optional, List
 
 from django.db.models import Model
+from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from api.events.event import EventOut, AbsEvent
 from api.models import Player, AuthSession
+
+
+class Subscription:
+
+    def __init__(self, model: str, model_id: dict):
+        self.model = model
+        self.model_id = id
 
 
 class WsPool:
@@ -129,9 +138,13 @@ class WsConn:
         self.session = None
         self.is_bukkit = False
         self.awaiting_response = {}
+        self.subscriptions: List[Subscription] = []
 
         # register connection, no matter if it's authorized or not
         WsPool.register_connection(self)
+
+    def subscribe(self, sub: Subscription):
+        self.subscriptions.append(sub)
 
     async def run(self):
         """ Keep reading and dispatching events """
@@ -144,8 +157,12 @@ class WsConn:
             except WebSocketDisconnect:
                 return WsPool.disconnect(self)
 
-            # parse event with name and payload
-            event = AbsEvent.parse_obj(data)
+            try:
+                # parse event with name and payload
+                event = AbsEvent.parse_obj(data)
+            except ValidationError:
+                logging.error(f"Malformed event received: {data}")
+                continue
 
             # handle without blocking.
             # We will be waiting for confirmation message from client
@@ -153,7 +170,7 @@ class WsConn:
             coro = WsEventManager.propagate_abstract_event(event, self)
             asyncio.create_task(coro)
 
-    async def send_event(self, event: EventOut):
+    async def send_event(self, event: EventOut) -> Optional[Dict]:
 
         if self.websocket.client_state == WebSocketState.DISCONNECTED:
             WsPool.disconnect(self)

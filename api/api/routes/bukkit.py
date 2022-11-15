@@ -13,5 +13,7 @@ async def post_event(event: AbsEvent):
     response = await BukkitEventManager.propagate_abstract_event(event, MineStrike(1))
 
     return {
-        "response": response
+        "response": {
+            "payload": response
+        }
     }

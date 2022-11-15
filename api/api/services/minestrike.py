@@ -1,3 +1,6 @@
+import logging
+from typing import Optional, Dict
+
 from api.consumers import WsPool, WsConn
 from api.events.event import EventOut
 
@@ -22,12 +25,13 @@ class MineStrike:
     def get_conn(self) -> WsConn:
         return WsPool.get_bukkit_server(self.server_id)
 
-    async def safe_send_event(self, evt):
+    async def safe_send_event(self, evt) -> Optional[Dict]:
         if self.get_conn() is None:
             self.event_queue.append(evt)
+            logging.warning(f"Event {evt.type} queued, no coroutine returned")
             return
 
-        await self.get_conn().send_event(evt)
+        return await self.get_conn().send_event(evt)
 
     async def model_update(self, model, pk=None):
 
@@ -47,7 +51,7 @@ class MineStrike:
             }
         )
 
-        await self.safe_send_event(evt)
+        return await self.safe_send_event(evt)
 
     async def update_server(self):
         """
@@ -56,10 +60,10 @@ class MineStrike:
         """
         await self.model_update("server", self.server_id)
 
-    async def join_game(self, game, player, team, status: int):
+    async def join_game(self, game, player, team):
 
         evt = EventOut(
-            type="PlayerJoinGameGrantedEvent",
+            type="PlayerGameConnectEvent",
             payload={
                 "player_id": player.id,
                 "game_id": game.id,
@@ -68,7 +72,7 @@ class MineStrike:
             }
         )
 
-        await self.safe_send_event(evt)
+        return await self.safe_send_event(evt)
 
     async def leave_game(self, game, player):
         evt = EventOut(

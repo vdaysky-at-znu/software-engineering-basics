@@ -1,11 +1,13 @@
 import asyncio
+import functools
 import traceback
 from collections import defaultdict
 from typing import Type, Any
 
 from pydantic import BaseModel
 
-from api.events.event import AbsEvent
+from api.events.event import AbsEvent, IntentResponse
+from api.events.schemas.bukkit import IntentEvent
 
 
 class WaitObject:
@@ -51,6 +53,20 @@ class EventManager:
 
     def on(self, event: Type[BaseModel]):
         def inner(func):
+
+            if isinstance(event, IntentEvent):
+
+                @functools.wraps(func)
+                async def safeguarded_func(entity, payload):
+                    r = func(entity, payload)
+                    if asyncio.iscoroutine(r):
+                        r = await r
+
+                    if not isinstance(r, IntentResponse):
+                        raise TypeError(f'IntentEvent handler {func} did not return IntentEvent')
+
+                func = safeguarded_func
+
             print(f"Registered handler {func.__name__} for event {event}")
 
             if isinstance(event, str):

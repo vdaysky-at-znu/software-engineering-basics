@@ -1,5 +1,6 @@
 import functools
 import inspect
+import logging
 import random
 import sys
 import traceback
@@ -218,14 +219,12 @@ def pythonic_to_graphql(type, field_owner=None):
     else:
         origin = None
         generic_args = None
-    print("debug", origin, generic_args)
 
     if origin == Union:
         return pythonic_to_graphql(generic_args[0], field_owner=field_owner)
 
     if origin and issubclass(origin, VirtualGenericTable):
         # we have a parametrized custom type.
-        print(f"generate_helper_table_name to graphql: {type} {origin} ")
 
         # we detected a custom type, so we need to generate a helper table.
         # example: Page[CustomIdType]
@@ -326,26 +325,44 @@ class AbstractTable:
         raise NotImplementedError
 
     @classmethod
-    def resolve(cls, **fields):
+    def resolve(cls, __parent=None, **fields):
+        """ Resolve upper level of model without any recursion """
         raise NotImplementedError
 
     @classmethod
+    def resolve_children(cls, self):
+        """ Completely resolve child models on this level
+
+            @param cls: the class of the parent model to resolve
+            @param self: the parent model value. Not necessarily an instance of cls.
+        """
+        for name, return_type, args in cls.get_model_fields():
+            if isinstance(return_type, type) and issubclass(return_type, AbstractTable):
+                model = return_type.resolve_recursively(self)
+                setattr(self, name, model)
+
+    @classmethod
+    def resolve_recursively(cls, __parent=None, **fields):
+        model = cls.resolve(__parent, **fields)
+        cls.resolve_children(model)
+        return model
+
+    @classmethod
     def resolve_with_context(cls, __info=None, **fields):
-        obj = cls.resolve(**fields)
+        obj = cls.resolve_recursively(None, **fields)
 
-        if obj is None:
-            raise ValueError("Resolver returned None for ", cls.get_type_name(), fields)
+        if obj is not None:
 
-        player = None
-        request: Optional[Request] = None
-        if __info:
-            request = __info.context.get("request")
-            player = get_player(request.headers.get('session_id'))
+            player = None
+            request: Optional[Request] = None
+            if __info:
+                request = __info.context.get("request")
+                player = get_player(request.headers.get('session_id'))
 
-        obj.context = {
-            'player': player,
-            'request': request
-        }
+            obj.context = {
+                'player': player,
+                'request': request
+            }
 
         return obj
 
@@ -415,7 +432,7 @@ class Table(Generic[T], AbstractTable):
         return [("id", int)]  # database table row has only one arg - id
 
     @classmethod
-    def resolve(cls, **fields):
+    def resolve(cls, __parent=None, **fields):
         print(f"resolve {cls.__name__} with {fields}")
         return cls.get_model_type().objects.filter(**fields).first()
 
@@ -459,7 +476,7 @@ class VirtualTable(AbstractTable):
         return cls.__name__
 
     @classmethod
-    def resolve(cls, **args):
+    def resolve(cls, __parent=None, **args):
         try:
             return cls(**args)
         except Exception as e:

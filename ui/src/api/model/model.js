@@ -29,6 +29,11 @@ class FieldType {
                 if (this.config.explicit) {
                     return fieldName;
                 }
+                
+                // avoid player_ids_id
+                if (this.isArray) {
+                    return fieldName;
+                }
 
                 return fieldName + "_id"
             }
@@ -116,6 +121,8 @@ const fieldNameMap = (field) => {
         maps: "map_ids",
         games: "game_ids",
         queues: "queue_ids",
+        whitelist: "whitelist_ids",
+        blacklist: "blacklist_ids",
     }
 
     if (mapping[field]) {
@@ -209,9 +216,12 @@ export default function GraphQlQuery(id, fieldIds, config) {
         }
 
         let fieldData = this.constructor.getGraphqlFields(isView);
+        
         for (let fieldName of Object.keys(fieldData)) {
 
+
             let field = fieldData[fieldName];
+
             if (!field.isArray && field.isModel()) {
                 let value;
                 if (field.type.__isExplicit) {
@@ -235,13 +245,13 @@ export default function GraphQlQuery(id, fieldIds, config) {
                 let value = data[fieldNameMap(fieldName)];
 
                 // skip any array fields that are not part of page model 
-                if (!this.constructor.__isPage) {
-                    continue;
-                }
+                // if (!this.constructor.__isPage) {
+                //     continue;
+                // }
 
-                if (fieldName != "items") {
-                    throw new Error("Only items field is supported for paginated models");
-                }
+                // if (fieldName != "items") {
+                //     throw new Error("Only items field is supported for paginated models");
+                // }
                 
                 while (reactive[fieldName].length) {
                     reactive[fieldName].pop();
@@ -262,7 +272,7 @@ export default function GraphQlQuery(id, fieldIds, config) {
 
         let fieldData = this.constructor.getGraphqlFields(isView);
 
-        // init empty pages
+        // init empty pages and arrays
         for (let fieldName of Object.keys(fieldData)) {
             let field = fieldData[fieldName];
 
@@ -270,6 +280,8 @@ export default function GraphQlQuery(id, fieldIds, config) {
                 if (!reactive[fieldName]) {
                     reactive[fieldName] = new field.type(this);
                 }
+            } else if (field.isArray) {
+                reactive[fieldName] = [];
             }
         }
 
@@ -413,11 +425,12 @@ GraphQlQuery.getGraphqlFields = function(isView) {
                 continue;
             } 
 
-            let pageType = Page(arrayItemType);
+            // let pageType = Page(arrayItemType);
             
+            // if it is not page type then it is a primitive array
             fields[fieldName] = new FieldType(
-                pageType,
-                false,
+                arrayItemType,
+                true,
             );
             continue;
         }
@@ -622,7 +635,6 @@ GraphQlQuery.all = function () {
 
                 window.$socket.onEvent("ModelCreateEvent", (data) => {
                   let modelName = data.payload.model_name;
-
                   if (modelName.toLowerCase() == model.getModelName().toLowerCase()) {
                     this.load();
                   }
