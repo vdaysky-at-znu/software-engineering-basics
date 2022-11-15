@@ -43,7 +43,7 @@ class ApiBase {
         return content;
     }
 
-    async graphql(model, id, fields, fieldIds) {
+    async graphql(query) { // model, id, fields, fieldIds
         /** Make a GraphQL query to the API
          * model - string name of model to query
          * id - id of model to query, could be complex ID represented by object, or null
@@ -51,48 +51,50 @@ class ApiBase {
          * fieldIds - array of parameters to query for each field, could be undefined
          */
 
-         fieldIds = fieldIds || {};
+        //  fieldIds = fieldIds || {};
 
-        let query;
+        // let query;
 
-        const isView = typeof id === "object";
+        // const isView = typeof id === "object";
         
-        // lowercase first letter
-        let normalizedModelName = model[0].toLowerCase() + model.slice(1);
+        // // lowercase first letter
+        // let normalizedModelName = model[0].toLowerCase() + model.slice(1);
         
-        const argKVPair = (key, value) => {
-            if (typeof value === "string") {
-                return `${key}: "${value}"`;
-            } else if (typeof value === "number") {
-                return `${key}: ${value}`;
-            } else if (value === null) {
-                return `${key}: null`;
-            }
-            return `${key}: ${value}`;
-        }
+        // const argKVPair = (key, value) => {
+        //     if (typeof value === "string") {
+        //         return `${key}: "${value}"`;
+        //     } else if (typeof value === "number") {
+        //         return `${key}: ${value}`;
+        //     } else if (value === null) {
+        //         return `${key}: null`;
+        //     }
+        //     return `${key}: ${value}`;
+        // }
 
-        let queryFields = fields.map(fieldName => {
-            let fieldArgs = fieldIds[fieldName];
+        // let queryFields = fields.map(fieldName => {
+        //     let fieldArgs = fieldIds[fieldName];
             
-            // if given field name has own args, process them. Otherwise, just return the name
-            if (fieldArgs) {
-                return Object.keys(fieldArgs).map(fieldArgName => argKVPair(fieldArgName, fieldArgs[fieldArgName])).join(", ");
-            } else {
-                return fieldName;
-            }
-        }).join(" ");
+        //     // if given field name has own args, process them. Otherwise, just return the name
+        //     if (fieldArgs) {
+        //         return Object.keys(fieldArgs).map(fieldArgName => argKVPair(fieldArgName, fieldArgs[fieldArgName])).join(", ");
+        //     } else {
+        //         return fieldName;
+        //     }
+        // }).join(" ");
 
-        if (isView) { // views may have miltiple ids
-            let queryId = Object.keys(id).map(k => `${k}: ${typeof id[k] === 'string' ? '"' + id[k] + '"' : id[k] }`).join(", ");
+        // if (isView) { // views may have miltiple ids
+        //     let queryId = Object.keys(id).map(k => `${k}: ${typeof id[k] === 'string' ? '"' + id[k] + '"' : id[k] }`).join(", ");
 
-            query = `query { ${normalizedModelName}(${queryId}) { ${queryFields} } }`;
-            console.log(query);
-        }
-        else if (id && fields) {
-            query = `query { ${normalizedModelName}(id: ${id}) { ${queryFields} } }`;
-        } else {
-            query = `query { ${normalizedModelName} }`; // request to get all entries
-        }
+        //     query = `query { ${normalizedModelName}(${queryId}) { ${queryFields} } }`;
+        //     console.log(query);
+        // }
+        // else if (id && fields) {
+        //     query = `query { ${normalizedModelName}(id: ${id}) { ${queryFields} } }`;
+        // } else {
+        //     query = `query { ${normalizedModelName} }`; // request to get all entries
+        // }
+        
+        query = `query { ${query} }`;
 
         console.log(query);
 
@@ -102,10 +104,16 @@ class ApiBase {
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
+                'session_id': localStorage['session_id']
             }
         });
 
-        return (await response.json()).data[normalizedModelName];
+        const {errors, data} = (await response.json());
+        if (errors) {
+            console.error(errors);
+            throw Error("GraphQL Request failed: See above");
+        }
+        return data[Object.keys(data)[0]];
     }
 }
 
@@ -192,6 +200,29 @@ class MsApi extends ApiBase {
             return null;
         }
         return new Player(playerId);
+    }
+
+    async joinQueue(queue) {
+        let response = await this.post("queue/join", {queue: queue.id});
+        return response == true;
+    }
+
+    async leaveQueue(queue) {
+        let response = await this.post("queue/leave", {queue: queue.id});
+        return response == true;
+    }
+
+    async confirmRankedMatch(queue) {
+        let response = await this.post("queue/confirm", {queue: queue.id});
+        return response == true;
+    }
+
+    async pickPlayer(queue, player) {
+        return await this.post("queue/pick", {player: player.id, queue: queue.id});
+    }
+
+    async joinGame(game) {
+        return await this.post("game/join", {game: game.id});
     }
 
 }

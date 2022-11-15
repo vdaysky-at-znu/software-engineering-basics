@@ -1,13 +1,16 @@
 import functools
 import inspect
+import logging
 import random
 import sys
 import traceback
 from collections import defaultdict
-from typing import TypeVar, Generic, List, get_args
-
+from typing import TypeVar, Generic, List, get_args, Tuple, Type, Optional, Union
+from starlette.requests import Request
 
 from ariadne import ObjectType
+
+from api.services.auth import get_player
 
 
 def computed(method=None, *, paginate=False):
@@ -142,7 +145,15 @@ class TableManager:
         return cls
 
     def get_graphql_requests(self):
-        return "".join([x.create_graphql_request() for x in self.queryable])
+        requests = []
+        for model in self.queryable:
+            try:
+                requests.append(model.create_graphql_request())
+            except Exception as e:
+                print(f"Error while generating graphql request for {model.__name__}")
+                raise e
+
+        return "\n".join(requests)
 
     def get_graphql_responses(self):
         typedefs = ""
@@ -169,7 +180,7 @@ class TableManager:
             dec = query.field(model.get_field_name())
 
             def resolve_thing(_, info, **fields):
-                return model.resolve(**fields)
+                return model.resolve_with_context(info, **fields)
 
             dec(resolve_thing)
 
@@ -177,7 +188,6 @@ class TableManager:
             dec = gql_obj.field(name)
 
             def test(obj, **kwargs):
-                print(f"teset: {obj} {kwargs}")
                 return prop(obj, **kwargs)
 
             dec(lambda obj, info, **kwargs: test(obj, **kwargs))
@@ -205,24 +215,26 @@ def pythonic_to_graphql(type, field_owner=None):
 
     if hasattr(type, '__origin__'):
         origin = type.__origin__
-        generic_type = type.__args__[0]
+        generic_args = type.__args__
     else:
         origin = None
-        generic_type = None
+        generic_args = None
+
+    if origin == Union:
+        return pythonic_to_graphql(generic_args[0], field_owner=field_owner)
 
     if origin and issubclass(origin, VirtualGenericTable):
         # we have a parametrized custom type.
-        print(f"generate_helper_table_name to graphql: {type} {origin} ")
 
         # we detected a custom type, so we need to generate a helper table.
         # example: Page[CustomIdType]
 
-        helper_type_name = generate_helper_table_name(origin, generic_type)
+        helper_type_name = generate_helper_table_name(origin, generic_args)
 
         class HelperType(origin):
             # TODO: store a dictionary of generic vars here instead of single var
             #  to support multiple generic vars, like Page[CustomIdType, Int32]
-            _generic_type = generic_type
+            _generic_type = generic_args[0]
 
         HelperType.__name__ = helper_type_name
 
@@ -246,8 +258,8 @@ def pythonic_to_graphql(type, field_owner=None):
     return type.__name__
 
 
-def generate_helper_table_name(base, generic_type):
-    return f"GenericHelper__{base.__name__}__{generic_type.__name__}"
+def generate_helper_table_name(base, generic_args):
+    return f"GenericHelper__{base.__name__}__{generic_args[0].__name__}"
 
 
 def format_typed_arg(typed_arg, field_owner=None):
@@ -286,11 +298,73 @@ class AbstractTable:
             player(id: Int!): Player
         """
 
+        name = cls.get_field_name()
+
+        result = f"{name}"
+
+        args = cls.get_constructor_args()
+
+        compiled_args = ""
+
+        for i, (name, type) in enumerate(args):
+            if name == 'self':
+                continue
+
+            is_last = i == len(args) - 1
+            comma = "," if not is_last else ""
+            compiled_args += f"{name}: {field_type_map[type]}{comma}"
+
+        if compiled_args:
+            result += f"({compiled_args})"
+
+        result += ": " + cls.get_type_name() + "\n"
+        return result
+
+    @classmethod
+    def get_constructor_args(cls) -> List[Tuple[str, Type]]:
         raise NotImplementedError
 
     @classmethod
-    def resolve(cls, **fields):
+    def resolve(cls, __parent=None, **fields):
+        """ Resolve upper level of model without any recursion """
         raise NotImplementedError
+
+    @classmethod
+    def resolve_children(cls, self):
+        """ Completely resolve child models on this level
+
+            @param cls: the class of the parent model to resolve
+            @param self: the parent model value. Not necessarily an instance of cls.
+        """
+        for name, return_type, args in cls.get_model_fields():
+            if isinstance(return_type, type) and issubclass(return_type, AbstractTable):
+                model = return_type.resolve_recursively(self)
+                setattr(self, name, model)
+
+    @classmethod
+    def resolve_recursively(cls, __parent=None, **fields):
+        model = cls.resolve(__parent, **fields)
+        cls.resolve_children(model)
+        return model
+
+    @classmethod
+    def resolve_with_context(cls, __info=None, **fields):
+        obj = cls.resolve_recursively(None, **fields)
+
+        if obj is not None:
+
+            player = None
+            request: Optional[Request] = None
+            if __info:
+                request = __info.context.get("request")
+                player = get_player(request.headers.get('session_id'))
+
+            obj.context = {
+                'player': player,
+                'request': request
+            }
+
+        return obj
 
     @classmethod
     def get_field_name(cls):
@@ -354,11 +428,11 @@ class Table(Generic[T], AbstractTable):
         cls._type_T = get_args(cls.__orig_bases__[0])[0]
 
     @classmethod
-    def create_graphql_request(cls):
-        return f"        {cls.get_field_name()}(id: Int!): {cls.get_type_name()}\n"
+    def get_constructor_args(cls) -> List[Tuple[str, Type]]:
+        return [("id", int)]  # database table row has only one arg - id
 
     @classmethod
-    def resolve(cls, **fields):
+    def resolve(cls, __parent=None, **fields):
         print(f"resolve {cls.__name__} with {fields}")
         return cls.get_model_type().objects.filter(**fields).first()
 
@@ -372,7 +446,7 @@ class Table(Generic[T], AbstractTable):
 
     @classmethod
     def get_field_name(cls):
-        n = cls._type_T.__name__[0].lower() + cls._type_T.__name__[1:]
+        n = cls.get_type_name()[0].lower() + cls.get_type_name()[1:]
         return n
 
 
@@ -386,32 +460,23 @@ class VirtualTable(AbstractTable):
     """
 
     @classmethod
-    def create_graphql_request(cls):
-        name = cls.__name__[0].lower() + cls.__name__[1:]
-
-        result = f"{name}("
-
+    def get_constructor_args(cls) -> List[Tuple[str, Type]]:
+        items = []
         constructor = inspect.signature(cls.__init__)
         params = constructor.parameters
-        for i, (name, param) in enumerate(params.items()):
-            if name == 'self':
+        for name, param in params.items():
+            if name == "self":
                 continue
+            items.append((name, param.annotation))
 
-            type = param.annotation
-
-            is_last = i == len(params) - 1
-            comma = "," if not is_last else ""
-            result += f"{name}: {field_type_map[type]}{comma}"
-
-        result += "): " + cls.__name__ + "\n"
-        return result
+        return items
 
     @classmethod
     def get_type_name(cls):
         return cls.__name__
 
     @classmethod
-    def resolve(cls, **args):
+    def resolve(cls, __parent=None, **args):
         try:
             return cls(**args)
         except Exception as e:

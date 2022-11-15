@@ -84,13 +84,21 @@ ASGI_APPLICATION = 'bms.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'ENGINE': 'django_postgrespool2',
         'NAME': os.environ.get("DB_NAME", 'betterms'),
         'USER': os.environ.get("DB_USER", 'vova'),
         'PASSWORD': os.environ.get("DB_PASSWORD", '1'),
         'HOST': '127.0.0.1',
         'PORT': '5432',
     }
+}
+
+DATABASE_POOL_CLASS = 'sqlalchemy.pool.QueuePool'
+
+DATABASE_POOL_ARGS = {
+    'max_overflow': 10,
+    'pool_size': 20,
+    'recycle': 300,
 }
 
 

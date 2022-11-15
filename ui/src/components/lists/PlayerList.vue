@@ -23,7 +23,7 @@
                         {{ i + 1 }}.
                     </td>
                     <td>
-                        <player-widget v-bind="{...$props, ...$attrs}" :player="player"></player-widget>
+                        <player-widget :player="player"></player-widget>
                     </td>
                     <td v-if="!dense">
                         {{ player.elo }}
@@ -43,8 +43,8 @@ import TeamWidget from '../widgets/TeamWidget.vue'
 export default {
   components: { PlayerWidget, TeamWidget },
   props: {
-    'players': Object, 
-    'hideTeam': Boolean,
+    players: Object, 
+    hideTeam: Boolean,
     dense: Boolean,
   },
 }

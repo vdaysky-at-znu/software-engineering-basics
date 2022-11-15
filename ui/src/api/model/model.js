@@ -13,35 +13,40 @@ class FieldType {
         return !!this.type.__virtualId;
     }
 
-    toGraphQl(fieldName) {
-        console.log("toGraphQl", fieldName);
+    toGraphQl(fieldName, currentValue) {
+        
+        const transformedFieldName = fieldNameMap(fieldName);
 
         if (this.isModel()) {
             if (this.hasComplexId()) {
-                return fieldNameMap(fieldName) + "{" + this.type.getobjectIdSchema() + "}"
+                return transformedFieldName + "{" + this.type.getobjectIdSchema() + "}"
             }
             else {
                 if (this.type.__isExplicit) {
-                    console.log("explicit type " + this.type.getModelName(), " to graphql " + this.type.toGraphQl());
-                    return fieldNameMap(fieldName) + this.type.toGraphQl();
+                    return transformedFieldName + currentValue.toGraphQl();
                 }
                 
                 if (this.config.explicit) {
+                    return fieldName;
+                }
+                
+                // avoid player_ids_id
+                if (this.isArray) {
                     return fieldName;
                 }
 
                 return fieldName + "_id"
             }
         } else {
-            return fieldNameMap(fieldName);
+            return transformedFieldName;
         }
     }
 }
 
-const newModelInstance = (type, value) => {
+const newModelInstance = (type, value, parent) => {
     let model;
     if (type.__isExplicit) {
-        model = new type();
+        model = new type(parent); // WTF am I doing here?
         model.loadFromData(value);
     } else {
         model = new type(value);
@@ -115,6 +120,9 @@ const fieldNameMap = (field) => {
         matches: "match_ids",
         maps: "map_ids",
         games: "game_ids",
+        queues: "queue_ids",
+        whitelist: "whitelist_ids",
+        blacklist: "blacklist_ids",
     }
 
     if (mapping[field]) {
@@ -202,12 +210,18 @@ export default function GraphQlQuery(id, fieldIds, config) {
     }
 
     this.loadFromData = (data) => {
+        if (!data) {
+            console.error(this)
+            throw new Error("loadFromData: data is required");
+        }
+
         let fieldData = this.constructor.getGraphqlFields(isView);
-        console.log("load ", this.getModelName(), "from data", data, "fields", fieldData);
+        
         for (let fieldName of Object.keys(fieldData)) {
 
+
             let field = fieldData[fieldName];
-            console.log(field);
+
             if (!field.isArray && field.isModel()) {
                 let value;
                 if (field.type.__isExplicit) {
@@ -223,7 +237,7 @@ export default function GraphQlQuery(id, fieldIds, config) {
                     continue;
                 }
 
-                reactive[fieldName] = newModelInstance(field.type, value);
+                reactive[fieldName] = newModelInstance(field.type, value, this);
             }
             
             // only paginated model will be loading lists
@@ -231,19 +245,19 @@ export default function GraphQlQuery(id, fieldIds, config) {
                 let value = data[fieldNameMap(fieldName)];
 
                 // skip any array fields that are not part of page model 
-                if (!this.constructor.__isPage) {
-                    continue;
-                }
+                // if (!this.constructor.__isPage) {
+                //     continue;
+                // }
 
-                if (fieldName != "items") {
-                    throw new Error("Only items field is supported for paginated models");
-                }
+                // if (fieldName != "items") {
+                //     throw new Error("Only items field is supported for paginated models");
+                // }
                 
-                console.log("Load list from values: ", value);
                 while (reactive[fieldName].length) {
                     reactive[fieldName].pop();
                 }
-                reactive[fieldName].push(...value.map(x => newModelInstance(field.type, x)));
+                const this_ = this;
+                reactive[fieldName].push(...value.map(x => newModelInstance(field.type, x, this_)));
             }
 
             else {
@@ -258,51 +272,88 @@ export default function GraphQlQuery(id, fieldIds, config) {
 
         let fieldData = this.constructor.getGraphqlFields(isView);
 
-        // init empty arrays that don't use pagination
-        // for (let fieldName of Object.keys(fieldData)) {
-        //     let field = fieldData[fieldName];
-
-        //     if (field.isArray && field.isModel()) {
-                
-        //         // paginated model can't use paginated model to recursively load fields
-        //         if (this.constructor.__isPaginatedModel) {
-        //             continue;
-        //         }
-
-        //         if (!reactive[fieldName]) {
-        //             console.log("Init array field", fieldName);
-        //             const pageType = Page(field.type);
-        //             reactive[fieldName] = new pageType();
-        //         }
-        //     }
-        // }
-
-        // init empty pages
+        // init empty pages and arrays
         for (let fieldName of Object.keys(fieldData)) {
             let field = fieldData[fieldName];
 
             if (field.type.__isPage) {
                 if (!reactive[fieldName]) {
-                    reactive[fieldName] = new field.type();
+                    reactive[fieldName] = new field.type(this);
                 }
+            } else if (field.isArray) {
+                reactive[fieldName] = [];
             }
         }
 
-        let fieldNames = Object.keys(fieldData).filter(field => {          
-            return !!field;
-        }).map(field => fieldData[field].toGraphQl(field));
+        // let fieldNames = Object.keys(fieldData).filter(field => {          
+        //     return !!field;
+        // }).map(field => fieldData[field].toGraphQl(field));
 
         
-        let modelName = this.constructor.__modelname || this.constructor.name;
+        // let modelName = this.constructor.__modelname || this.constructor.name;
         
         let data = {};
+
+        const request = this.toGraphQl();
         
-        console.log("field names to query", fieldNames);
-        if (fieldNames.length) {
-            data = await window.$api.graphql(modelName, this.objectId || this.id, fieldNames, this.fieldIds);
-        }
+        data = await window.$api.graphql(request); // modelName, this.objectId || this.id, fieldNames, this.fieldIds
 
         this.loadFromData(data);
+    }
+
+    // can't be a static function because instance might have arguments
+    this.toGraphQl = (alias) => {
+        let request = "";
+        
+        console.log("Convert", this, "To GraphQL, alias:", alias);
+        let args = [];
+
+        if (this.objectId) {
+            args.push(
+                ...Object.keys(this.objectId).map(key => {
+                    return key + ": " + JSON.stringify(this.objectId[key]);
+                })
+            );
+        } else if (this.id && !this.constructor.__isPage) { // todo: some sort of flag for fake ids
+            args.push("id: " + this.id);
+        }
+
+        if (this.__args) {
+            args.push(...Object.keys(this.__args).map(key => {
+                return key + ": " + JSON.stringify(this.__args[key]);
+            }));
+        }
+        console.log("Use Args:", args);
+
+        const declaredFields = this.constructor.getGraphqlFields(isView);
+        
+        // lowercase first letter
+        const normalizedModelName = alias || this.getModelName().charAt(0).toLowerCase() + this.getModelName().slice(1);
+
+        request += normalizedModelName + (args.length ? "(" + args.join(" ") + ")" : '') + "{" + Object.keys(declaredFields).map(field => {
+            const mappedField = fieldNameMap(field);
+            // recursive call on existing instance. Instance might have arguments
+            if (this[field] instanceof GraphQlQuery) {
+                console.log(declaredFields[field]);
+                if (declaredFields[field].type.__isExplicit) {
+                    console.log("Recurse into GraphQlQuery (" + field + ")");
+                    return this[field].toGraphQl(mappedField);
+                } else {
+                    console.log("Do not recurse into GraphQlQuery (" + mappedField + ")");
+                    if (declaredFields[field].isArray) {
+                        return mappedField;
+                    }
+                    return mappedField + "_id";
+                }
+            }
+            console.log("Primitive Field (" + field + ")");
+            // primitives can be compiled from their type
+            let r = declaredFields[field].toGraphQl(mappedField);
+            console.log("Primitive converted");
+            return r
+        }).join(" ") + "}";
+
+        return request;
     }
     
     if (!defer) {
@@ -315,7 +366,6 @@ export default function GraphQlQuery(id, fieldIds, config) {
 
 GraphQlQuery.getGraphqlFields = function(isView) {
 
-    console.log("get fields of ", this.name);
     if (this.fields) {
         return this.fields;
     }
@@ -375,12 +425,12 @@ GraphQlQuery.getGraphqlFields = function(isView) {
                 continue;
             } 
 
-            let pageType = Page(arrayItemType);
+            // let pageType = Page(arrayItemType);
             
-            console.log("set page type on", this.name, "for field", fieldName);
+            // if it is not page type then it is a primitive array
             fields[fieldName] = new FieldType(
-                pageType,
-                false,
+                arrayItemType,
+                true,
             );
             continue;
         }
@@ -395,7 +445,6 @@ GraphQlQuery.getGraphqlFields = function(isView) {
         fields = {...fields, ...this.__proto__.getGraphqlFields(isView)};
     }
 
-    console.log("fields of ", this.name, fields);
     this.fields = fields;
     return fields;
 }
@@ -417,15 +466,14 @@ GraphQlQuery.toGraphQl = function() {
      * Turns complex model into selection of fields {...}
     */
 
-    console.log("model to graphql", this.getModelName());
+    throw new Error("toGraphQl Can't be called from static context");
 
-    let fields = this.getGraphqlFields();
-    let result = "{";
-    for (let fieldName of Object.keys(fields)) {
-        console.log("field to graphql", fieldName, fields[fieldName]);
-        result += fields[fieldName].toGraphQl(fieldName) + " ";
-    }
-    return result + "}";
+    // let fields = this.getGraphqlFields();
+    // let result = "{";
+    // for (let fieldName of Object.keys(fields)) {
+    //     result += fields[fieldName].toGraphQl(fieldName) + " ";
+    // }
+    // return result + "}";
 }
 
 export function Page(T) {
@@ -438,10 +486,24 @@ export function Page(T) {
         static items = [T]
         static count = Number
 
-        constructor(data) {
-            console.log("construct page from", data);
+        constructor(parent) {
+
+            if (!parent) {
+                throw new Error("Page must be initialized with parent");
+            }
+
+            // assert that parent is model
+            if (!(parent instanceof GraphQlQuery)) {
+                throw new Error("Page parent must be model");
+            }
+
             super(Math.random(), undefined, {defer: true});
+
             this.items = [];
+
+            // field might have args
+            this.__args = {};
+            this.__parent = parent;
         }
 
         [Symbol.iterator]() {
@@ -454,6 +516,26 @@ export function Page(T) {
 
         filter(f) {
             return this.items.filter(f);
+        }
+        
+        some(f) {
+            return this.items.some(f);
+        }
+
+        setFilter(name, value) {
+            this.__args[name] = value;
+            this.__parent.load(); // todo: load only this page
+        }
+
+        setPage(p) {
+            this.setFilter("page", p)
+        }
+        setSize(s) {
+            this.setFilter("size", s)
+        }
+
+        get length() {
+            return this.items.length;
         }
     }
 
@@ -553,9 +635,7 @@ GraphQlQuery.all = function () {
 
                 window.$socket.onEvent("ModelCreateEvent", (data) => {
                   let modelName = data.payload.model_name;
-
                   if (modelName.toLowerCase() == model.getModelName().toLowerCase()) {
-                    console.log("Update ALL view", model.getModelName());
                     this.load();
                   }
                 });

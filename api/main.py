@@ -1,6 +1,12 @@
+import logging
 import os
 
+from broadcaster import Broadcast
 from django.core.wsgi import get_wsgi_application
+from fastapi_utils.tasks import repeat_every
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from middleware import DBConnectionSanitizerMiddleware
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bms.settings')
 application = get_wsgi_application()
@@ -11,13 +17,14 @@ from starlette.requests import HTTPConnection
 from fastapi import FastAPI
 
 from ariadne.asgi import GraphQL
+from ariadne.asgi.handlers import GraphQLWSHandler, GraphQLTransportWSHandler
 
 from starlette.authentication import AuthenticationBackend
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.websockets import WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.consumers import WebsocketConnection
+from api.consumers import WsConn
 
 from api.exceptions import install_exception_handlers
 
@@ -29,7 +36,12 @@ origins = [
     "http://localhost:8000",
     "http://localhost:8081",
     "http://127.0.0.1:8081",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080"
 ]
+
+# Configuring logging
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s][%(levelname)s] %(message)s")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +50,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# mw = DBConnectionSanitizerMiddleware()
+app.add_middleware(DBConnectionSanitizerMiddleware)
 
 app.include_router(prefix="/api", router=get_v1_router())
 
@@ -47,6 +61,19 @@ def status():
     return {
         "success": True
     }
+
+
+@app.on_event("startup")
+@repeat_every(seconds=60, raise_exceptions=True)
+async def keep_open_servers():
+    """ A task that runs every minute to keep open servers.
+        Ideally servers should be created on events,
+        but this is a fallback.
+    """
+    from api.tasks.game import keep_open_pubs, keep_open_deathmatch, keep_open_duels
+    await keep_open_pubs()
+    await keep_open_deathmatch()
+    await keep_open_duels()
 
 
 # init handlers
@@ -83,11 +110,11 @@ install_exception_handlers(app)
 from api.signals import register_signals
 
 register_signals()
+broadcast = Broadcast("memory://")
 
 
 @app.websocket("/ws/connect")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("new websocket connection")
-    conn = WebsocketConnection(websocket)
+    conn = WsConn(websocket)
     await conn.run()

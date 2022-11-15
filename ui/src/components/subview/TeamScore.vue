@@ -20,7 +20,7 @@
                 </th>
 
                 <th>
-                    KD
+                    K/D
                 </th>
 
                 <th>
@@ -46,7 +46,7 @@
                     {{ stat.assists }}
                 </td>
                 <td>
-                    {{ (stat.kills || 0) / (stat.deaths || 1) }}
+                    {{ stat.kd() }}
                 </td>
                 <td>
                     {{ stat.hs }}%
@@ -74,10 +74,12 @@ export default {
         }
     },
     watch: {
-        team() {
+        team: {
+            handler() {
             this.statsView = new GameStatsView({in_game_team_id: this.team.id})
-            console.log("Stats View: ", this.statsView);
-        }
+        },
+        immediate: true,
+        },
     }
 }
 </script>

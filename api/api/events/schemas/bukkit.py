@@ -5,16 +5,21 @@ from pydantic import BaseModel
 from api.dependencies import PlayerField, GameField, InGameTeamField
 
 
+class IntentEvent(BaseModel):
+    pass
+
+
 class ServerStartEvent(BaseModel):
     pass
 
 
-class RequestCreateGameEvent(BaseModel):
+class CreateGameIntentEvent(IntentEvent):
     mapName: str
-    plugins: list
+    mode: str
+    player: PlayerField
 
 
-class RequestPlayerJoinGameEvent(BaseModel):
+class PlayerJoinGameIntentEvent(IntentEvent):
     game: GameField
     player: PlayerField
 
@@ -24,7 +29,7 @@ class PlayerLeaveGameEvent(BaseModel):
     player: PlayerField
 
 
-class RequestPlayerTeamChangeEvent(BaseModel):
+class PlayerTeamChangeIntentEvent(IntentEvent):
     game: GameField
     player: PlayerField
     team: str
@@ -38,4 +43,12 @@ class PreGameEndEvent(BaseModel):
 
 class GameStartedEvent(BaseModel):
     game: GameField
+
+
+class PlayerJoinServerEvent(BaseModel):
+    player: PlayerField
+
+
+class PlayerLeaveServerEvent(BaseModel):
+    player: PlayerField
 

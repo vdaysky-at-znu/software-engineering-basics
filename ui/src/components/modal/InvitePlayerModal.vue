@@ -28,31 +28,7 @@
                 ]"></custom-form>
                 
                 <div style="max-height: 500px; overflow-y: scroll">
-                    <v-table theme="light">
-                        <thead>
-                        <tr>
-                            <th class="text-left">
-                                FFT Players
-                            </th>
-                            <th class="text-left">
-                            
-                            </th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr
-                            v-for="player in filteredPlayerView" 
-                            :key="player"
-                        >
-                            <td><player-widget :player="player"></player-widget></td>
-                            <td> 
-                                <v-btn :disabled="player.invited" @click="sendInvite(player)">
-                                    {{ player.invited ? 'Invited' : 'Invite' }}
-                                </v-btn>
-                            </td>
-                        </tr>
-                        </tbody>
-                    </v-table>
+                    <contextual-list paginated v-if="fftView?.players" :listComponent="PlayerList" :source="fftView.players" propname="players" ></contextual-list>
                 </div>
             </v-card-content>
         
@@ -66,14 +42,22 @@
 <script>
 import { FftPlayerView } from '@/api/model/models';
 import CustomForm from '../common/CustomForm.vue';
-import PlayerWidget from '../widgets/PlayerWidget.vue';
+// import PlayerWidget from '../widgets/PlayerWidget.vue';
+import ContextualList from '../contextual/ContextualList.vue';
+import PlayerList from '@/components/lists/PlayerList.vue';
 export default {
-  components: { CustomForm, PlayerWidget },
+  components: { CustomForm, ContextualList },
 
     // prevent inheritance because we want attrs 
     // to only be inherited by button activator
     // and not modal itself
     inheritAttrs: false,    
+
+    setup() {
+        return {
+            PlayerList
+        }
+    },
 
     data: () => ({
         playerForm: {},
@@ -103,14 +87,9 @@ export default {
 
         fftView: {
             handler: function (newVal) {
-                console.log("fftView changed",newVal,  newVal.players);
+                console.log("fftView changed", newVal);
 
-                this.playerData = {};
-                for (let player of newVal.players) {
-                    this.playerData[player.id] = {
-                        invited: false,
-                    };
-                }
+                
             },
             deep: true,
         },

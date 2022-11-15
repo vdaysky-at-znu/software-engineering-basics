@@ -76,12 +76,12 @@ export default {
       };
     },
     pages() {
-      console.log('source count', this.source);
         return Math.ceil(this.source.count / 10) || 0;
     }
   },
   watch: {
     page: function (newPage) {
+      console.log("set page on", this.source);
         this.source.setPage(newPage - 1);
     },
   }

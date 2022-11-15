@@ -1,16 +1,13 @@
 from api.events.event import AbsEvent
 from api.exceptions import BadRequestError
 from api.models import MapPick, Player, MapPickProcess
-from api.services import internalHandler
+from api.events.internal import internalHandler
 
 
 async def select_map(map: MapPick, player: Player):
     process = map.process
     match = process.match
     is_picked = process.next_action == MapPickProcess.Action.PICK
-
-    # Find out who tries to vote
-    team = player.team
 
     # look up pick process
     map_pick_process = match.map_pick_process
@@ -27,11 +24,7 @@ async def select_map(map: MapPick, player: Player):
     if map_pick_process.finished:
         raise BadRequestError
 
-    if map_pick_process.turn != team:
-
-        if match.other_team(map_pick_process.turn) != team:
-            raise BadRequestError
-
+    if map_pick_process.turn != player:
         raise BadRequestError("Wait for your turn")
 
     if map.was_selected():
@@ -39,7 +32,7 @@ async def select_map(map: MapPick, player: Player):
 
     # mark map as selected
     map.picked = is_picked
-    map.selected_by = team
+    map.selected_by = player.team
     map.save()
 
     # update count after last action
@@ -78,16 +71,15 @@ async def select_map(map: MapPick, player: Player):
     map_pick_process.next_action = next_action
 
     if not map_pick_process.finished:
-        map_pick_process.turn = match.other_team(map_pick_process.turn)
+        map_pick_process.turn = map_pick_process.other_picker(player)
     else:
         map_pick_process.turn = None
 
     map_pick_process.save()
 
-    print(f"Is map pick process finished? {map_pick_process.finished}")
     if map_pick_process.finished:
-        await internalHandler.propagate_event(AbsEvent(name='MapPickDone', payload={}), match)
+        await internalHandler.propagate_abstract_event(AbsEvent(name='MapPickDone', payload={}), match)
 
 
 async def finish_mp(match):
-    await internalHandler.propagate_event(AbsEvent(name='MapPickDone', payload={}), match)
+    await internalHandler.propagate_abstract_event(AbsEvent(name='MapPickDone', payload={}), match)

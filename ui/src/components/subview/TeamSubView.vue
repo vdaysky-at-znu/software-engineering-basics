@@ -2,13 +2,13 @@
   <v-container>
     <v-card>
       <v-card-title class="justify-center">
-        <span>{{ team.full_name }} | {{ team.elo }} Elo </span>
+        <span>{{ title }}</span>
       </v-card-title>
       <v-card-text class="pt-0">
         <contextual-list
-          v-bind="$attrs"
+          v-bind="dynamicProps"
           :listComponent="PlayerList"
-          :source="team.members"
+          :source="players"
           propname="players"
         >
         </contextual-list>
@@ -21,6 +21,7 @@
 <script>
 import PlayerList from "@/components/lists/PlayerList.vue";
 import ContextualList from "@/components/contextual/ContextualList.vue";
+import { MatchTeam } from '@/api/model/models';
 export default {
     components: { ContextualList },
     setup() {
@@ -29,6 +30,28 @@ export default {
         }
     },
     props: {'team': null},
+    computed: {
+      isMatchTeam() {
+        return this.team instanceof MatchTeam;
+      },
+      title() {
+        if (this.isMatchTeam) {
+          return this.team.name;
+        }
+        return this.team.short_name + " | " + this.team.elo + " Elo"; 
+      },
+      players() {
+        if (this.isMatchTeam) {
+          return this.team.players;
+        }
+        return this.team.members;
+      },
+      dynamicProps() {
+        let a = {...this.$attrs};
+        delete a['style'];
+        return a;
+      }
+    }
 
 }
 </script>

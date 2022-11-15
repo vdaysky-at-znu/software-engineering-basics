@@ -46,3 +46,22 @@ class AbsEvent(BaseModel):
 
     name: str  # Event name, corresponds to bukkit event name
     payload: dict  # All the fields for that event
+
+
+class EventResponse(BaseModel):
+    payload: dict
+
+
+class IntentResponse(BaseModel):
+    payload: dict
+    intent_success: bool
+    intent_message: str
+
+    @classmethod
+    def success(cls, message: str, **kwargs):
+        return cls(intent_success=True, intent_message=message, payload=kwargs)
+
+    @classmethod
+    def failure(cls, message: str, **kwargs):
+        return cls(intent_success=False, intent_message=message, payload=kwargs)
+

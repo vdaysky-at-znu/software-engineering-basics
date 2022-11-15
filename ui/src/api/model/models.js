@@ -2,8 +2,14 @@ import Model, { Page } from './model.js';
 // import VirtualModel from './virtual.js';
 
 
+export class Map extends Model {
+    static __modelname = 'Map';
+    static name = String;
+    static display_name = String;
+}
+
 export class Game extends Model {
-    static map = String;
+    static map = Map;
     static is_started = Boolean;
     static is_finished = Boolean;
     static score_a = Number;
@@ -11,6 +17,15 @@ export class Game extends Model {
     static team_a = 'InGameTeam';
     static team_b = 'InGameTeam';
     static match = 'Match';
+    static whitelist = ['Player'];
+    static blacklist = ['Player'];
+
+    isFull() {
+        return (this?.team_a?.players?.length||0) + (this?.team_b?.players?.length||0) >= 10;
+    }
+    playerCount() {
+        return (this?.team_a?.players?.length||0) + (this?.team_b?.players?.length||0)
+    }
 }
 
 export class Team extends Model {
@@ -34,7 +49,7 @@ export class Role extends Model {
     static __modelname = "Role";
 
     static name = String;
-    static permissions = Page(Permission)
+    static permissions = [Permission]
 
 }
 
@@ -46,17 +61,23 @@ export class Player extends Model {
     static owned_team = Team;
     static username = String;
     static elo = Number;
+    static in_server = Boolean;
+    static on_website = Boolean;
+    static game = Game;
 
     isAuthenticated() {
         return this.uuid != null;
     }
 
     isInTeam(team) {
+        if (!team) return false;
+        console.log("is in team", team, this.team);
         if (this.team == null) return false;
-        if (team) {
-            return this.team.id == team.id;
-        }
-        return true;
+        console.log("is in team", this.team.id == team.id);
+        return this.team.id == team.id;
+    }
+    isOnTeam() {
+        return this.team != null;
     }
 
     hasPermission(permission) {
@@ -111,18 +132,18 @@ export class MapPick extends Model {
     }
 
     isBanned() {
-       return this.isSelected() && !this.picked
+       return this.picked === false;
     }
 
     isPicked() {
-        return this.isSelected() && this.picked
+        return this.picked === true;
     }
 }
 
 export class MapPickProcess extends Model {
 
     static maps = Page(MapPick);
-    static turn = Team;
+    static turn = Player;
     // 1 = ban, 2 = pick, 3 = default, 0 = null
     static next_action = String;
     static finished = Boolean;
@@ -130,13 +151,22 @@ export class MapPickProcess extends Model {
 
 }
 
+export class MatchTeam extends Model {
+    static __modelname = "MatchTeam"
+
+    static name = String;
+    static players = Page(Player);
+    static team = Team;
+    static in_game_team = 'InGameTeam';
+}
+
 export class Match extends Model {
 
     static __modelname = "Match";
 
     static name = String;
-    static team_one = Team;
-    static team_two = Team;
+    static team_one = MatchTeam;
+    static team_two = MatchTeam;
     static map_pick_process = MapPickProcess;
     static games = Page(Game);
 }
@@ -153,7 +183,7 @@ export class Event extends Model {
 export class InGameTeam extends Model {
     static __modelname = "InGameTeam";
     static name = String;
-    static players = Page(Player);
+    static players = [Player];
     static is_ct = Boolean;
     static starts_as_ct = Boolean;
 }
@@ -216,7 +246,7 @@ export class FftPlayerView extends Model {
 
 export class TopPlayersView extends Model {
     static __virtualId = {
-        criteria: String
+        order_by: String
     }
 
     static players = Page(Player);
@@ -233,9 +263,80 @@ export class PlayerPerformanceAggregatedView extends Model {
     static assists = Number;
     static hs = Number;
     static player = Player;
+
+    kd() {
+        return Math.round((this.kills || 0) / (this.deaths || 1) * 100) / 100;
+    }
+}
+
+export class PlayerExtendedPerformanceAggregatedView extends PlayerPerformanceAggregatedView {
+    
+    static __modelname = 'PlayerPerformanceAggregatedView';
+
+    static games_played = Number;
+    static games_won = Number;
+
+    static ranked_games_played = Number;
+    static ranked_games_won = Number;
 }
 
 export class GameStatsView extends Model {
 
     static stats = Page(PlayerPerformanceAggregatedView);
+}
+
+export class TopTeamView extends Team {
+
+}
+
+export class PubsView extends Model {
+    static games = Page(Game);
+    static online_player_count = Number;
+}
+
+export class DeathMatchView extends Model {
+    static games = Page(Game);
+}
+
+export class DuelsView extends Model {
+    static games = Page(Game);
+}
+
+export class GameModeStatsView extends Model {
+    static ranked_online = Number;
+    static pubs_online = Number;
+    static duels_online = Number;
+    static deathmatch_online = Number;
+    static ranked_games = Number;
+    static pubs_games = Number;
+    static duels_games = Number;
+    static deathmatch_games = Number;
+}
+
+export class PlayerQueue extends Model {
+    static players = Page(Player);
+    static type = Number;
+    static locked = Boolean;
+    static confirmed = Boolean;
+
+    static confirmed_count = Number;
+    static confirmed_by_me = Boolean;
+
+    static match = Match;
+    static captain_a = Player;
+    static captain_b = Player;
+}
+
+export class RankedView extends Model {
+    static queues = Page(PlayerQueue);
+    static my_queue = PlayerQueue;
+}
+
+export class Post extends Model {
+    static title = String;
+    static subtitle = String;
+    static text = String;
+    static author = Player;
+    static date = String;
+    static header_image = String;
 }
