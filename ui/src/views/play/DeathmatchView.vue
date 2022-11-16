@@ -7,7 +7,7 @@
 
 <script>
 import { DeathMatchView } from '@/api/model/models'
-import GameList from '@/components/contextual/GameList.vue'
+import GameList from '@/components/lists/GameList.vue'
 export default {
   components: { GameList },
   data() {

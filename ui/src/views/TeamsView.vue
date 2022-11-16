@@ -8,23 +8,17 @@
     </v-row>
     <v-row>
       <v-col>
-        <contextual-list :source="teams" :listComponent="TeamList" propname="teams" interactive paginated></contextual-list>
+        <team-list :teams="teams" interactive paginated></team-list>
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script>
-import TeamList from "@/components/lists/TeamList.vue";
 import { Team } from "@/api/model/models";
-import ContextualList from '@/components/contextual/ContextualList.vue';
+import TeamList from '@/components/lists/TeamList.vue';
 export default {
-  components: { ContextualList },
-  setup() {
-    return {
-      TeamList
-    }
-  },
+  components: { TeamList },
   data() {
     return {
       teams: Team.all(),

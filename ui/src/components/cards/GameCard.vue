@@ -1,5 +1,5 @@
 <template>
-  <v-card>
+  <v-card style="min-width: 220px; max-width: 350px; width: 100%">
     <v-card-title>
         {{ game?.map?.display_name }} #{{ game?.id}}
     </v-card-title>

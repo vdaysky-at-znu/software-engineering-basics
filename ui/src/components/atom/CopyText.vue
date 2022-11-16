@@ -1,6 +1,6 @@
 <template>
   <div>
-    <code>
+    <code class="text-no-wrap">
       {{ value }}
     </code>
     <div class="icon">

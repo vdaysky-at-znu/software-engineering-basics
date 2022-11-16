@@ -2,7 +2,7 @@
   <v-container>
     <v-row>
       <v-col>
-        <h1>
+        <h1 class="text-center">
           {{ match.name }}
         </h1>
       </v-col>
@@ -32,7 +32,7 @@
 import { Match } from '@/api/model/models'
 import MapPickProcessView from './MapPickProcessView.vue'
 import TeamSubView from '@/components/subview/TeamSubView.vue'
-import GameList from '@/components/contextual/GameList.vue'
+import GameList from '@/components/lists/GameList.vue'
 import { useDisplay } from 'vuetify/lib/framework.mjs'
 
 export default {

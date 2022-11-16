@@ -8,33 +8,32 @@
     </v-row>
     <v-row>
       <v-col>
-        <contextual-list :source="players" :listComponent="PlayerList" propname="players" interactive paginated></contextual-list>
+        <player-list :players="players" interactive paginated>
+        </player-list>
+        
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script>
-import PlayerList from '@/components/lists/PlayerList.vue'
-import { Player } from '@/api/model/models'
-import ContextualList from '@/components/contextual/ContextualList.vue'
+import { Player } from "@/api/model/models";
+import PlayerList from '@/components/lists/PlayerList.vue';
 export default {
-  components: { ContextualList },
+  components: { PlayerList },
   setup() {
     return {
-      PlayerList
-    }
+      PlayerList,
+    };
   },
   data() {
-      return {
-          players: Player.all(),
-      }
+    return {
+      players: Player.all(),
+    };
   },
-  created: function() {
-  }
-}
+  created: function () {},
+};
 </script>
 
 <style>
-
 </style>

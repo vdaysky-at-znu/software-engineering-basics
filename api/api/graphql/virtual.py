@@ -5,7 +5,7 @@ import random
 import sys
 import traceback
 from collections import defaultdict
-from typing import TypeVar, Generic, List, get_args, Tuple, Type, Optional, Union
+from typing import TypeVar, Generic, List, get_args, Tuple, Type, Optional, Union, Callable
 from starlette.requests import Request
 
 from ariadne import ObjectType
@@ -13,78 +13,108 @@ from ariadne import ObjectType
 from api.services.auth import get_player
 
 
-def computed(method=None, *, paginate=False):
+def _parse_signature(function):
+    sig = inspect.signature(function)
+    params = []
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
 
-    def register_computed_method(f):
-        sig = inspect.signature(f)
+        if param.annotation == inspect._empty:
+            continue
 
-        return_type = sig.return_annotation
-        param_sig = []
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-            param_sig.append({
-                "type": param.annotation,
-                "name": name,
-                "required": param.default == inspect.Parameter.empty
-            })
+        params.append({
+            "type": param.annotation,
+            "name": name,
+            "required": param.default == inspect.Parameter.empty
+        })
+    return params
 
-        f._prop_meta = [
-            f.__name__,
-            f,
-            return_type,
-            param_sig
-        ]
 
+def _register_computed_method(callable, paginate, filters):
+    from api.graphql.query import Page
+
+    # get args needed by raw computed prop itself
+    sig = inspect.signature(callable)
+
+    return_type = sig.return_annotation
+    param_sig = _parse_signature(callable)
+
+    # add pagination props if needed
+    if paginate:
+        param_sig.append({
+            "type": int,
+            "name": "page",
+            "required": False
+        })
+        param_sig.append({
+            "type": int,
+            "name": "size",
+            "required": False
+        })
+        if return_type.__origin__ != Page:
+            if return_type.__origin__ == list:
+                return_type = Page[return_type.__args__[0]]
+            else:
+                raise ValueError("Paginate can only be used with Page/List return types.")
+
+    # add filter props if needed
+    if filters:
+        for filter in filters:
+            filter_sig = _parse_signature(filter)
+            param_sig.extend(filter_sig)
+
+    def wrapped_handler(self, **kwargs):
+
+        callable_args = {}
+        for orig_param in _parse_signature(callable):
+            arg_name = orig_param['name']
+            if arg_name in kwargs:
+                callable_args[arg_name] = kwargs[arg_name]
+
+        result = callable(self, **callable_args)
+
+        if filters:
+            for filter in filters:
+                filter_args = {}
+                for orig_param in _parse_signature(filter):
+                    arg_name = orig_param['name']
+                    if arg_name in kwargs:
+                        filter_args[arg_name] = kwargs[arg_name]
+
+                result = filter(result, **filter_args)
+
+        if paginate:
+            page = kwargs['page']
+            size = kwargs['size']
+            if isinstance(result, list):
+                result = Page(len(result), result[page * size: (page + 1) * size])
+            else:
+                result = Page(result.count(), result.values_list('id', flat=True)[page * size:page * size + size])
+
+        return result
+
+    callable._prop_meta = [
+        callable.__name__,
+        wrapped_handler,
+        return_type,
+        param_sig
+    ]
+    print(f"Registered computed method {callable.__name__}", param_sig)
+
+
+def computed(method=None, *, paginate=False, filters: List[Callable] = None):
+
+    # called as function
     if not method:
-
-        if not paginate:
-            return computed
-
         def real_decorator(method):
-            from api.graphql.query import Page
-
-            ret_type = inspect.signature(method).return_annotation
-            returned_type = ret_type.__args__[0]
-
-            sig = inspect.signature(method)
-
-            new_sig = inspect.Signature(
-                parameters=[
-                    *sig.parameters.values(),
-                    inspect.Parameter(
-                        name="page",
-                        kind=inspect.Parameter.KEYWORD_ONLY,
-                        default=0,
-                        annotation=int,
-                    ),
-                    inspect.Parameter(
-                        name="size",
-                        kind=inspect.Parameter.KEYWORD_ONLY,
-                        default=10,
-                        annotation=int,
-                    )
-                ],
-                return_annotation=Page[returned_type]
-            )
-
-            def paginated_prop(self, page: int = 0, size: int = 10, **kwargs) -> Page[returned_type]:
-                data = method(self, **kwargs)
-                if isinstance(data, list):
-                    return Page(len(data), data[page * size: (page + 1) * size])
-
-                return Page(data.count(), data.values_list('id', flat=True)[page * size:page * size + size])
-
-            paginated_prop.__signature__ = new_sig
-            paginated_prop.__name__ = method.__name__
-            register_computed_method(paginated_prop)
-
-            return paginated_prop
+            _register_computed_method(method, paginate, filters)
+            return method
 
         return real_decorator
 
-    register_computed_method(method)
-
+    # called as decorator
+    _register_computed_method(method, paginate, filters)
     return method
 
 
@@ -312,7 +342,11 @@ class AbstractTable:
 
             is_last = i == len(args) - 1
             comma = "," if not is_last else ""
-            compiled_args += f"{name}: {field_type_map[type]}{comma}"
+            try:
+                _mapped = field_type_map[type]
+            except KeyError:
+                raise ValueError(f"Unknown type {type} for field {name} in {cls.__name__}")
+            compiled_args += f"{name}: {_mapped}{comma}"
 
         if compiled_args:
             result += f"({compiled_args})"

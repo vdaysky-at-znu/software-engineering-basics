@@ -50,49 +50,6 @@ class ApiBase {
          * fields - array of field names to query
          * fieldIds - array of parameters to query for each field, could be undefined
          */
-
-        //  fieldIds = fieldIds || {};
-
-        // let query;
-
-        // const isView = typeof id === "object";
-        
-        // // lowercase first letter
-        // let normalizedModelName = model[0].toLowerCase() + model.slice(1);
-        
-        // const argKVPair = (key, value) => {
-        //     if (typeof value === "string") {
-        //         return `${key}: "${value}"`;
-        //     } else if (typeof value === "number") {
-        //         return `${key}: ${value}`;
-        //     } else if (value === null) {
-        //         return `${key}: null`;
-        //     }
-        //     return `${key}: ${value}`;
-        // }
-
-        // let queryFields = fields.map(fieldName => {
-        //     let fieldArgs = fieldIds[fieldName];
-            
-        //     // if given field name has own args, process them. Otherwise, just return the name
-        //     if (fieldArgs) {
-        //         return Object.keys(fieldArgs).map(fieldArgName => argKVPair(fieldArgName, fieldArgs[fieldArgName])).join(", ");
-        //     } else {
-        //         return fieldName;
-        //     }
-        // }).join(" ");
-
-        // if (isView) { // views may have miltiple ids
-        //     let queryId = Object.keys(id).map(k => `${k}: ${typeof id[k] === 'string' ? '"' + id[k] + '"' : id[k] }`).join(", ");
-
-        //     query = `query { ${normalizedModelName}(${queryId}) { ${queryFields} } }`;
-        //     console.log(query);
-        // }
-        // else if (id && fields) {
-        //     query = `query { ${normalizedModelName}(id: ${id}) { ${queryFields} } }`;
-        // } else {
-        //     query = `query { ${normalizedModelName} }`; // request to get all entries
-        // }
         
         query = `query { ${query} }`;
 
@@ -111,6 +68,9 @@ class ApiBase {
         const {errors, data} = (await response.json());
         if (errors) {
             console.error(errors);
+            for (let error of errors) {
+                console.error(error.message);
+            }
             throw Error("GraphQL Request failed: See above");
         }
         return data[Object.keys(data)[0]];

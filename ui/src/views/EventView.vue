@@ -8,14 +8,7 @@
     </v-row>
     <v-row>
       <v-col>
-        <contextual-list
-          v-if="event.matches"
-          :source="event.matches"
-          propname="matches"
-          :listComponent="MatchList"
-          interactive
-          paginated
-        >
+        <match-list :matches="event.matches" interactive paginated>
           <template v-slot:createForm>
             <assert-permission permission="match.create">
               <modal-dialog @submit="createMatch" button="Create">
@@ -74,7 +67,7 @@
               </modal-dialog>
             </assert-permission>
           </template>
-        </contextual-list>
+        </match-list>
       </v-col>
     </v-row>
   </v-container>
@@ -85,10 +78,14 @@ import { Event, Team } from "@/api/model/models";
 import AssertPermission from "@/components/AssertPermission.vue";
 import CustomForm from "@/components/common/CustomForm.vue";
 import ModalDialog from "@/components/ModalDialog.vue";
-import ContextualList from "@/components/contextual/ContextualList.vue";
 import MatchList from "@/components/lists/MatchList.vue";
 export default {
-  components: { AssertPermission, CustomForm, ModalDialog, ContextualList },
+  components: {
+    AssertPermission,
+    CustomForm,
+    ModalDialog,
+    MatchList,
+  },
   data() {
     return {
       event: new Event(this.$route.params.event),

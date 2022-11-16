@@ -86,14 +86,7 @@
           :players="rankedQueue.match.team_one.players"
         ></player-list>
       </v-col>
-      <v-col>
-        <map-pick-process-view
-          v-if="rankedQueue?.match?.map_pick_process"
-          :disabled="stage == 'teamPick'"
-          :mapPickProcess="rankedQueue?.match?.map_pick_process"
-        >
-        </map-pick-process-view>
-      </v-col>
+      
       <v-col>
         <player-list
           v-if="rankedQueue?.match?.team_two?.players"
@@ -121,15 +114,13 @@
 <script>
 import { PlayerQueue } from "@/api/model/models";
 import PlayerList from "@/components/lists/PlayerList.vue";
-import MapPickProcessView from "@/views/MapPickProcessView.vue";
 import ConfirmModal from "./ConfirmModal.vue";
 import PlayerWidget from "@/components/widgets/PlayerWidget.vue";
 import MatchWidget from "@/components/widgets/MatchWidget.vue";
-import GameList from "@/components/contextual/GameList.vue";
+import GameList from "@/components/lists/GameList.vue";
 export default {
   components: {
     PlayerList,
-    MapPickProcessView,
     ConfirmModal,
     PlayerWidget,
     MatchWidget,
@@ -218,7 +209,7 @@ export default {
   },
   watch: {
     rankedQueue: {
-      handler() {
+      handler(newValue, oldValue) {
         if (
           this.rankedQueue.locked &&
           !this.rankedQueue.confirmed &&
@@ -228,6 +219,9 @@ export default {
         }
         if (!this.rankedQueue.locked || this.rankedQueue.confirmed) {
           this.$refs?.confirm?.hide?.();
+        }
+        if (oldValue?.match == null && newValue?.match != null) {
+          this.$router.push({ name: "match", params: { id: newValue.match.id } });
         }
       },
       deep: true,

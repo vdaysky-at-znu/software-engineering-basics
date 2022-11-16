@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <game-list :games="pubs.games" paginated interactive>
+    <game-list variant='cards' :games="pubs.games" paginated interactive>
 
     </game-list>
   </v-container>
@@ -8,7 +8,7 @@
 
 <script>
 import { PubsView } from '@/api/model/models'
-import GameList from '@/components/contextual/GameList.vue'
+import GameList from '@/components/lists/GameList.vue'
 export default {
 
     setup() {

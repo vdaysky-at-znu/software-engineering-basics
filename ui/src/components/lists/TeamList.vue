@@ -1,46 +1,35 @@
 <template>
-  <v-container>
-    <v-table>
-        <thead>
-            <tr>
-                <th>
-                    #
-                </th>
-                <th>
-                    Team
-                </th>
-                <th>
-                    Elo
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr v-for="(team, i) in teams" :key="team">
-                <td width="8%">
-                    {{ i + 1 }}.
-                </td>
-                <td>
-                    <team-widget :team="team"></team-widget>
-                </td>
-                <td>
-                    {{ team.elo }}
-                </td>
-            </tr>
-        </tbody>
-    </v-table>
-  </v-container>
+  <contextual-list
+    :source="teams"
+    :headers="[
+      { label: '#', name: 'index' },
+      { label: 'Team', name: 'team' },
+      { label: 'Elo', name: 'elo', orderable: true },
+    ]"
+  >
+    <template v-slot:row="{ i, row, headers }">
+      <td v-if="headers.index" width="8%">{{ i + 1 }}.</td>
+      <td v-if="headers.team">
+        <team-widget :team="row"></team-widget>
+      </td>
+      <td v-if="headers.elo">
+        {{ row.elo }}
+      </td>
+    </template>
+  </contextual-list>
 </template>
 
 <script>
-import TeamWidget from '../widgets/TeamWidget.vue'
+import ContextualList from "../contextual/ContextualList.vue";
+import TeamWidget from "../widgets/TeamWidget.vue";
 export default {
-    props: ['teams'],
-    components: {
-        TeamWidget
-    }
-}
+  props: ["teams"],
+  components: {
+    TeamWidget,
+    ContextualList,
+  },
+};
 </script>
 
 <style>
-
 </style>

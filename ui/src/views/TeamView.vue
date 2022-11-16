@@ -8,10 +8,14 @@ import TeamSubView from "@/components/subview/TeamSubView.vue";
 
 export default {
   components: { TeamSubView },
-  data() {
-    return {
-      team: new Team(this.$route.params.team),
-    };
+
+  computed: {
+    teamId() {
+      return this.$route.params.team;
+    },
+    team() {
+      return new Team(this.teamId);
+    },
   },
 };
 </script>

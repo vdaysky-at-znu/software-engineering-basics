@@ -1,5 +1,6 @@
 import inspect
 import json
+from datetime import datetime
 from typing import List, TypeVar, Generic, get_args, Type, Tuple, Optional
 
 from ariadne import QueryType, make_executable_schema, ObjectType
@@ -12,6 +13,68 @@ from api.models import Player, Team, Role, PlayerPermission, Game, InGameTeam, P
 tableManager = TableManager()
 
 T = TypeVar('T')
+
+
+def match_filter(
+        value, *,
+        query: str = None,
+        teams_in: List[int] = None,
+        map_in: List[int] = None,
+        players_in: List[int] = None,
+        event: int = None,
+        date: int = None):
+
+    if event is not None:
+        event_order = 'name' if event > 0 else '-name'
+        value = value.order_by(event_order)
+
+    if date is not None:
+        date_order = 'start_date' if date > 0 else '-start_date'
+        value = value.order_by(date_order)
+
+    if query:
+        value = value.filter(name__icontains=query)
+
+    if teams_in:
+        value = value.filter(Q(team_one__id__in=teams_in) | Q(team_two__id__in=teams_in)).distinct()
+
+    if map_in:
+        value = value.filter(games__map__id__in=map_in)
+
+    if players_in:
+        value = value.filter(Q(team_one__players__id__in=players_in) | Q(team_two__players__id__in=players_in)).distinct()
+
+    return value
+
+
+def player_filter(value, *, query: str = None, elo: int = None):
+    if elo is not None:
+        elo_order = 'elo' if elo > 0 else '-elo'
+        value = value.order_by(elo_order)
+
+    if query:
+        value = value.filter(Q(username__icontains=query) | Q(uuid__icontains=query))
+
+    return value
+
+
+def team_filter(value, *, elo: int = None, query: str = None):
+    if query:
+        value = value.filter(Q(short_name__icontains=query) | Q(full_name__icontains=query))
+
+    if elo is not None:
+        elo_order = 'elo' if elo > 0 else '-elo'
+        value = value.order_by(elo_order)
+
+    return value
+
+
+def game_filter(value, *, map: List[int] = None):
+
+    if map:
+        value = value.filter(map__id__in=map)
+
+    return value
 
 
 @tableManager.type
@@ -41,9 +104,9 @@ class EventTable(Table[Event]):
     name: str
     start_date: str
 
-    @computed
-    def match_ids(self, page: int = 0, count: int = 10) -> Page[int]:
-        return Page(self.matches.count(), self.matches.values_list('id', flat=True)[page * count:page * count + count])
+    @computed(paginate=True)
+    def match_ids(self) -> Page[int]:
+        return self.matches
 
 
 @tableManager.table
@@ -105,9 +168,9 @@ class TeamTable(Table[Team]):
     location_code: str
 
     @computed
-    def member_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+    def member_ids(self, page: int = 0, size: int = 10) -> Page[int]:
         _all = Player.objects.filter(team_id=self.id)
-        return Page(_all.count(), [player.id for player in _all[page * count:page * count + count]])
+        return Page(_all.count(), [player.id for player in _all[page * size:page * size + size]])
 
 
 @tableManager.table
@@ -122,9 +185,9 @@ class MatchTable(Table[Match]):
     map_pick_process_id: int
 
     @computed
-    def game_ids(self, page: int = 0, count: int = 10) -> Page[int]:
+    def game_ids(self, page: int = 0, size: int = 10) -> Page[int]:
         _all = Game.objects.filter(match_id=self.id)
-        return Page(_all.count(), [game.id for game in _all[page * count:page * count + count]])
+        return Page(_all.count(), [game.id for game in _all[page * size:page * size + size]])
 
 
 @tableManager.table
@@ -142,7 +205,7 @@ class MatchTeamTable(Table[MatchTeam]):
     in_game_team_id: int
 
     @computed(paginate=True)
-    def player_ids(self) -> List[int]:
+    def player_ids(self) -> Page[int]:
         return self.players.all()
 
 
@@ -302,6 +365,62 @@ class ManyToOne(PaginatedTable[int]):
 
 
 @tableManager.table
+class ManyToOnes(VirtualTable):
+    """ This is the home to all exposed many-to-one relations. """
+
+    def __init__(self):
+        pass
+
+    @computed(paginate=True)
+    def event_list(self, query: str = None, upcoming: bool = None, teams_in: List[int] = None, map_in: List[int] = None, players_in: List[int] = None, event: int = None, date: int = None) -> List[int]:
+
+        q = Event.objects.all()
+
+        if event is not None:
+            event_order = 'name' if event > 0 else '-name'
+            q = q.order_by(event_order)
+
+        if date is not None:
+            date_order = 'start_date' if date > 0 else '-start_date'
+            q = q.order_by(date_order)
+
+        if query:
+            q = q.filter(name__icontains=query)
+
+        if upcoming is not None:
+            if upcoming:
+                q = q.filter(start_date__gt=datetime.now())
+            else:
+                q = q.filter(start_date__lt=datetime.now())
+
+        if players_in:
+            # find event that has matches that has teams that has players that has ids in players_in
+            q = q.filter(Q(matches__team_one__players__id__in=players_in) | Q(matches__team_two__players__id__in=players_in)).distinct()
+
+        return q
+
+    @computed(paginate=True, filters=[player_filter])
+    def player_list(self) -> List[int]:
+        return Player.objects.all()
+
+    @computed(paginate=True)
+    def post_list(self) -> List[int]:
+        return Post.objects.all()
+
+    @computed(paginate=True, filters=[match_filter])
+    def match_list(self) -> List[int]:
+        return Match.objects.all()
+
+    @computed(paginate=True, filters=[team_filter])
+    def team_list(self) -> List[int]:
+        return Team.objects.all()
+
+    @computed(paginate=True)
+    def map_list(self) -> List[int]:
+        return Map.objects.all()
+
+
+@tableManager.table
 class PlayerPerformanceAggregatedView(VirtualTable):
     """ Player stats optionally inside a game """
     player_id: int
@@ -434,7 +553,7 @@ class PubsView(VirtualTable):
     def __init__(self):
         pass
 
-    @computed(paginate=True)
+    @computed(paginate=True, filters=[game_filter])
     def game_ids(self) -> List[int]:
         return Game.objects.filter(mode=Game.Mode.PUB).exclude(status=Game.Status.FINISHED).values_list('id', flat=True)
 

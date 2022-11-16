@@ -16,13 +16,13 @@
       </v-app-bar-title>
 
       <div v-show="smAndUp">
-          <v-btn :to="{ name: 'play' }" flat>Play</v-btn>
+          <v-btn color="success" variant="outlined" :to="{ name: 'play' }" flat>Play<v-icon>mdi-play-circle-outline</v-icon></v-btn>
         </div>
       <v-spacer></v-spacer>
         <div v-show="smAndUp">
-          <v-btn :to="{ name: 'players' }" flat>Players</v-btn>
-          <v-btn :to="{ name: 'teams' }" flat>Teams</v-btn>
-          <v-btn :to="{ name: 'events' }" flat>Events</v-btn>
+          <v-btn :to="{ name: 'players' }" flat>Players<v-icon>mdi-account-outline</v-icon></v-btn>
+          <v-btn :to="{ name: 'teams' }" flat>Teams <v-icon>mdi-account-group</v-icon></v-btn>
+          <v-btn :to="{ name: 'events' }" flat>Events <v-icon>mdi-calendar-check-outline</v-icon></v-btn>
         </div>
       
 
@@ -48,8 +48,7 @@
       <v-col style="background: #cdcdcd; padding-top: 110px" cols="0" lg="2" v-show="!mdAndDown">
         <div>
           <h3 class="text-center">Top Team</h3>
-          <team-sub-view dense class="pa-0" :team="topTeam"></team-sub-view>
-          <!-- <playerbase-ctx :players="topPlayers.players"></playerbase-ctx> -->
+          <team-sub-view class="pa-0" :team="topTeam"></team-sub-view>
         </div>
         
       </v-col>
@@ -62,9 +61,7 @@
 
       <v-col style="background: #cdcdcd; padding-top: 110px" cols="0" lg="2" v-show="!mdAndDown">
         <h3 class="text-center">Top Players</h3>
-        <v-sheet rounded="lg" min-height="268">
-          <player-list :players="topPlayersView.players"></player-list>
-        </v-sheet>
+        <player-list :players="topPlayersView.players"></player-list>
       </v-col>
     </v-row>
 
