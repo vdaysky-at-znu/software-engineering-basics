@@ -70,7 +70,7 @@ def find_team_for_player(game: Game, player: Player) -> InGameTeam:
         match_team: Optional[MatchTeam] = match.get_player_team(player)
 
         if match_team:
-            roster = match_team.in_game_team
+            roster = match_team.in_game_team # raises error
 
     # If roster wasn't found, see if player already was on team
     roster = roster or game.get_player_team(player)
@@ -238,7 +238,12 @@ async def create_pub(map_name=None):
     """ Create new pub game """
 
     if not map_name:
-        map_name = random.choice(['MIRAGE'])
+        map = Map.objects.order_by('?').first()
+    else:
+        map = Map.objects.filter(name=map_name).first()
+
+    if not map:
+        return
 
     team_a = InGameTeam.objects.create(starts_as_ct=True, is_ct=True)
     team_b = InGameTeam.objects.create(starts_as_ct=False, is_ct=False)
@@ -249,7 +254,7 @@ async def create_pub(map_name=None):
         team_b=team_b,
         status=Game.Status.NOT_STARTED,
         plugins=PLUGIN_MAP[Game.Mode.PUB],
-        map=map_name
+        map=map
     )
 
     return game
@@ -259,7 +264,12 @@ async def create_deathmatch(map_name=None):
     """ Create new deathmatch game """
 
     if not map_name:
-        map_name = random.choice(['MIRAGE'])
+        map = Map.objects.order_by('?').first()
+    else:
+        map = Map.objects.filter(name=map_name).first()
+
+    if not map:
+        return
 
     team_a = InGameTeam.objects.create(starts_as_ct=True, is_ct=True)
     team_b = InGameTeam.objects.create(starts_as_ct=False, is_ct=False)
@@ -270,7 +280,7 @@ async def create_deathmatch(map_name=None):
         team_b=team_b,
         status=Game.Status.NOT_STARTED,
         plugins=PLUGIN_MAP[Game.Mode.DEATHMATCH],
-        map=map_name
+        map=map
     )
 
     return game
@@ -280,7 +290,12 @@ async def create_duels(map_name=None):
     """ Create new duels game """
 
     if not map_name:
-        map_name = random.choice(['MIRAGE'])
+        map = Map.objects.order_by('?').first()
+    else:
+        map = Map.objects.filter(name=map_name).first()
+
+    if not map:
+        return
 
     team_a = InGameTeam.objects.create(starts_as_ct=True, is_ct=True)
     team_b = InGameTeam.objects.create(starts_as_ct=False, is_ct=False)
@@ -291,8 +306,7 @@ async def create_duels(map_name=None):
         team_b=team_b,
         status=Game.Status.NOT_STARTED,
         plugins=PLUGIN_MAP[Game.Mode.DUELS],
-        map=map_name
+        map=map
     )
-
 
     return game

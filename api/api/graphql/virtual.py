@@ -100,7 +100,6 @@ def _register_computed_method(callable, paginate, filters):
         return_type,
         param_sig
     ]
-    print(f"Registered computed method {callable.__name__}", param_sig)
 
 
 def computed(method=None, *, paginate=False, filters: List[Callable] = None):

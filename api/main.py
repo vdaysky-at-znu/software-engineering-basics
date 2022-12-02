@@ -1,7 +1,7 @@
 import logging
 import os
 
-from broadcaster import Broadcast
+import uvicorn
 from django.core.wsgi import get_wsgi_application
 from fastapi_utils.tasks import repeat_every
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -110,7 +110,6 @@ install_exception_handlers(app)
 from api.signals import register_signals
 
 register_signals()
-broadcast = Broadcast("memory://")
 
 
 @app.websocket("/ws/connect")
@@ -118,3 +117,4 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     conn = WsConn(websocket)
     await conn.run()
+

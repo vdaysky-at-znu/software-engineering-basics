@@ -630,8 +630,9 @@ class Role(models.Model):
 
     def has_perm(self, perm):
         for has_perm in self.permissions.all():
-            parts_present = has_perm.name.split(".")
-            parts_required = perm.split(".")
+            parts_present = has_perm.name.lower().split(".")
+            parts_required = perm.lower().split(".")
+            print(f"present: {parts_present}, required: {parts_required}")
 
             # present permission is more specific than required
             if len(parts_present) > len(parts_required):

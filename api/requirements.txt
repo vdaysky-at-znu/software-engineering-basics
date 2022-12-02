@@ -48,3 +48,5 @@ urllib3~=1.26.10
 pycparser~=2.21
 setuptools~=60.2.0
 fastapi_utils==0.2.1
+django-postgrespool2
+pytz

@@ -1,8 +1,8 @@
 <template>
   <div>
 
-    <router-link :to="{name: 'team', params: {team: team.id} }">
-        {{ team.short_name }}
+    <router-link :to="{name: 'team', params: {team: team?.team?.id || team.id} }">
+        {{ team.short_name || team.name }}
     </router-link>
       
   </div>

@@ -52,3 +52,12 @@ class PlayerJoinServerEvent(BaseModel):
 class PlayerLeaveServerEvent(BaseModel):
     player: PlayerField
 
+
+class PlayerDeathEvent(BaseModel):
+    damagee: PlayerField
+    damager: Optional[PlayerField]
+    game: GameField
+    damageSource: str
+    modifiers: dict
+    reason: str
+    round: int

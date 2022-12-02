@@ -2,9 +2,9 @@
   <contextual-list
     :headers="[
       { name: 'match', label: 'Match' },
-      { name: 'team_one', label: 'Team A' },
-      { name: 'vs', label: 'VS' },
-      { name: 'team_two', label: 'Team B' },
+      { name: 'team_one', label: 'Team A', align: 'center' },
+      { name: 'vs', label: '', align: 'center' },
+      { name: 'team_two', label: 'Team B', align: 'center' },
     ]"
     :source="matches"
     v-bind="{...$attrs}"

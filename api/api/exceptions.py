@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.util import response
@@ -16,7 +16,7 @@ class APIError(Exception):
             *,
             status_code: int = None,
             error_code: int = None,
-            headers: dict[str, Any] = None,
+            headers: Dict[str, Any] = None,
     ):
         if not message and not self.message:
             raise ValueError('`message` is required')
